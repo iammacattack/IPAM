@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     IPAM_SEED_DIR=/app/seed \
-    IPAM_MIGRATIONS_DIR=/app/api/migrations
+    IPAM_MIGRATIONS_DIR=/app/api/migrations \
+    IPAM_WEB_DIR=/app/web
 
 WORKDIR /app
 COPY api/requirements.txt api/requirements.txt
@@ -17,6 +18,7 @@ RUN pip install ./engine
 
 COPY api api
 COPY seed seed
+COPY web web
 
 RUN useradd --system --uid 10001 --no-create-home ipam
 USER ipam

@@ -250,6 +250,15 @@ def create_template(request: Request, body: TemplateIn, principal: Principal = D
     return {**tsvc.version_view(row), "vlansCreated": created}
 
 
+@router.post("/templates:layout", tags=["templates"])
+def layout_content(request: Request, body: ContentIn, _: Principal = Depends(require("read"))):
+    """Lay out unsaved template content (template builder). Returns every subnet, the VLANs a bulk
+    rule would create, and the full validation report. Nothing is persisted."""
+    note(request, "template.layout_preview", objectType="template")
+    with tx() as conn:
+        return tsvc.layout_preview(conn, body.content)
+
+
 @router.get("/templates/{key}", tags=["templates"])
 def get_template(request: Request, key: str, _: Principal = Depends(require("read"))):
     note(request, "template.read", objectType="template", objectKey=key.upper())

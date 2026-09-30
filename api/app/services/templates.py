@@ -73,7 +73,8 @@ def prepare_content(conn, content: dict[str, Any]) -> tuple[dict[str, Any], Layo
 # --------------------------------------------------------------------------- #
 
 
-def validation_report(conn, content: dict[str, Any]) -> dict[str, Any]:
+def validation_report(conn, content: dict[str, Any], pending_vlans: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Release validation. ``pending_vlans`` are VLANs a bulk rule would create on save (builder preview)."""
     try:
         layout = layout_from_content(content)
     except EngineValidationError as err:
@@ -85,6 +86,10 @@ def validation_report(conn, content: dict[str, Any]) -> dict[str, Any]:
     warnings: list[str] = []
     bound = [s for s in layout.subnets if s.vlan_key]
     library = repo.vlans(conn, [s.vlan_key for s in bound])
+    for key, d in (pending_vlans or {}).items():
+        library.setdefault(
+            key, {"vlan_id": d["vlanId"], "vlan_name": d["vlanName"], "status": "active", "security_zone": d.get("securityZone")}
+        )
     seen_ids: dict[int, str] = {}
     for s in bound:
         v = library.get(s.vlan_key)
@@ -135,6 +140,59 @@ def validation_report(conn, content: dict[str, Any]) -> dict[str, Any]:
             ],
         },
     }
+
+
+def layout_preview(conn, content: dict[str, Any]) -> dict[str, Any]:
+    """Lay out unsaved content for the template builder. Nothing is written, not even rule VLANs."""
+    empty = {"valid": False, "warnings": [], "summary": None, "subnets": [], "newVlans": [], "placement": None}
+    try:
+        layout = layout_from_content(content)
+        expanded, defs = expand_vlan_rules(content, layout)
+        layout = layout_from_content(expanded)
+    except EngineValidationError as err:
+        return {**empty, "errors": [e.to_dict() for e in err.errors]}
+    except EngineError as err:
+        return {**empty, "errors": [err.to_dict()]}
+
+    existing = repo.vlans(conn, [d["vlanKey"] for d in defs])
+    rule_errors: list[dict[str, Any]] = []
+    new: list[dict[str, Any]] = []
+    for d in defs:
+        e = existing.get(d["vlanKey"])
+        if e is None:
+            clash = conn.execute("SELECT vlan_key FROM vlan WHERE vlan_name = %s", (d["vlanName"],)).fetchone()
+            if clash:
+                rule_errors.append({"code": "IPAM-VLAN-DUPLICATE", "message": f"VLAN name {d['vlanName']} is already used by {clash['vlan_key']}"})
+            new.append(d)
+        elif e["vlan_id"] != d["vlanId"] or e["vlan_name"] != d["vlanName"]:
+            rule_errors.append({"code": "IPAM-VLAN-DUPLICATE", "message": f"{d['vlanKey']} already exists as {e['vlan_id']}/{e['vlan_name']}"})
+
+    report = validation_report(conn, expanded, {d["vlanKey"]: d for d in new})
+    library = repo.vlans(conn, [s.vlan_key for s in layout.subnets if s.vlan_key])
+    new_keys = {d["vlanKey"]: d for d in new}
+    generated = {d["vlanKey"] for d in defs}
+    subnets = []
+    for b in layout.blocks:
+        for s in b.subnets:
+            v = library.get(s.vlan_key) if s.vlan_key else None
+            nd = new_keys.get(s.vlan_key) if s.vlan_key else None
+            subnets.append(
+                {
+                    "blockKey": b.key,
+                    "section": s.section,
+                    "vrf": s.vrf,
+                    "relativeCidr": str(s.relative),
+                    "prefix": s.relative.prefixlen,
+                    "vlanKey": s.vlan_key,
+                    "vlanId": v["vlan_id"] if v else (nd["vlanId"] if nd else None),
+                    "vlanName": v["vlan_name"] if v else (nd["vlanName"] if nd else None),
+                    "fromRule": s.vlan_key in generated,
+                    "newVlan": nd is not None,
+                    "gatewayOffset": s.gateway_offset,
+                }
+            )
+    errors = rule_errors + report["errors"]
+    return {**report, "valid": not errors, "errors": errors, "subnets": subnets, "newVlans": new}
 
 
 # --------------------------------------------------------------------------- #

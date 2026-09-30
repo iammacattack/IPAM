@@ -12,7 +12,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from psycopg import errors as pg_errors
 
 from nextdc_ipam_engine import EngineError, __version__ as engine_version
@@ -97,3 +98,29 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
 
 for r in (design.router, sites.router, lookups.router, governance.router):
     app.include_router(r, prefix=API_PREFIX)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/ui/"):
+        # The UI loads only its own scripts and styles and talks only to this API.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse("/ui/")
+
+
+if settings.web_dir.is_dir():
+    app.mount("/ui", StaticFiles(directory=settings.web_dir, html=True), name="ui")
+else:
+    log.warning("web UI folder %s not found; /ui isn't served", settings.web_dir)

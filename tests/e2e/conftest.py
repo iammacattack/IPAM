@@ -34,6 +34,9 @@ def reset_allocations():
     if os.environ.get("IPAM_TEST_RESET") == "1" and DATABASE_URL and API_KEY:
         with psycopg.connect(DATABASE_URL) as conn:
             conn.execute("TRUNCATE ip_record, subnet, block, site, site_code CASCADE")
+            # Throwaway Workflow 1 templates from earlier runs (never deployed, so safe to remove)
+            conn.execute("DELETE FROM template_version WHERE template_key LIKE 'WF1-%'")
+            conn.execute("DELETE FROM template WHERE template_key LIKE 'WF1-%'")
     yield
 
 

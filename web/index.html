@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NEXTDC IPAM (POC)</title>
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">NEXTDC <strong>IPAM</strong> <span class="tag">POC</span></a>
+    <nav id="nav" hidden>
+      <a href="#/" data-route="dashboard">Dashboard</a>
+      <a href="#/templates" data-route="templates">Templates</a>
+      <a href="#/sites" data-route="sites">Sites</a>
+      <a href="#/lookup" data-route="lookup">Lookup</a>
+      <a href="#/library" data-route="library">Library</a>
+      <a href="#/audit" data-route="audit">Audit</a>
+    </nav>
+    <div class="topbar-right" id="session" hidden>
+      <span id="whoami"></span>
+      <button type="button" class="btn-link" id="signout">Sign out</button>
+    </div>
+  </header>
+  <main id="app"><p class="muted">Loading…</p></main>
+  <div id="toasts" aria-live="polite"></div>
+</body>
+</html>

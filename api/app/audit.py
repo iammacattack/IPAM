@@ -23,7 +23,13 @@ from .db import autocommit
 
 log = logging.getLogger("ipam.audit")
 
-EXCLUDED = {f"{API_PREFIX}/healthz", f"{API_PREFIX}/readyz", "/healthz", "/readyz"}
+EXCLUDED = {f"{API_PREFIX}/healthz", f"{API_PREFIX}/readyz", "/healthz", "/readyz", "/", "/favicon.ico"}
+# Static UI files and the Swagger page carry no data; the API calls they make are audited.
+EXCLUDED_PREFIXES = ("/ui/", "/docs")
+
+
+def _excluded(path: str) -> bool:
+    return path in EXCLUDED or path.startswith(EXCLUDED_PREFIXES)
 REDACT = ("key", "token", "secret", "password")
 
 
@@ -76,7 +82,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             response.headers["X-Request-Id"] = str(request_id)
             return response
         finally:
-            if request.url.path not in EXCLUDED:
+            if not _excluded(request.url.path):
                 await run_in_threadpool(self._record, request, request_id, status, started)
 
     @staticmethod
