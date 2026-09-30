@@ -31,13 +31,22 @@ def reset_allocations():
     Only runs when IPAM_TEST_RESET=1, which the Compose test profile sets. Templates,
     the VLAN library and the audit log are left alone.
     """
-    if os.environ.get("IPAM_TEST_RESET") == "1" and DATABASE_URL and API_KEY:
+    reset = os.environ.get("IPAM_TEST_RESET") == "1" and DATABASE_URL and API_KEY
+    if reset:
         with psycopg.connect(DATABASE_URL) as conn:
             conn.execute("TRUNCATE ip_record, subnet, block, site, site_code CASCADE")
-            # Throwaway Workflow 1 templates from earlier runs (never deployed, so safe to remove)
-            conn.execute("DELETE FROM template_version WHERE template_key LIKE 'WF1-%'")
-            conn.execute("DELETE FROM template WHERE template_key LIKE 'WF1-%'")
+            _drop_test_templates(conn)
     yield
+    if reset:
+        # Leave only the seed template visible in the UI; the X9 site stays for poking at.
+        with psycopg.connect(DATABASE_URL) as conn:
+            _drop_test_templates(conn)
+
+
+def _drop_test_templates(conn) -> None:
+    """Throwaway Workflow 1 templates (WF1-*). They're never deployed, so removing them is safe."""
+    conn.execute("DELETE FROM template_version WHERE template_key LIKE 'WF1-%'")
+    conn.execute("DELETE FROM template WHERE template_key LIKE 'WF1-%'")
 
 
 @pytest.fixture(scope="session")
