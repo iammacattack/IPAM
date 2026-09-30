@@ -19,7 +19,16 @@ Docker Desktop has to be running. Then, from the repository root:
 docker compose up --build -d          # API on http://127.0.0.1:8820
 ```
 
-- **Swagger UI:** <http://127.0.0.1:8820/docs>. Click **Authorize** and paste the `IPAM_BOOTSTRAP_API_KEY` value from `.env`.
+- **Web UI:** <http://127.0.0.1:8820/>. Sign in with the `IPAM_BOOTSTRAP_API_KEY` value from `.env`. The UI has these pages:
+  - **Dashboard**
+  - **Templates:** versions, layout, host placement, validation, preview and release
+  - **Template builder** (Workflow 1): sections, split and merge, VLANs, bulk rule
+  - **Sites** (Workflow 2): reserve, confirm, extend, release, design, host assignment
+  - **Lookup tester** (Workflow 3): host IP, VLAN attributes, manifest tokens
+  - **Library** and **Audit**
+
+  It's plain ES modules in `web/` with no build step, served by the API.
+- **Swagger UI:** <http://127.0.0.1:8820/docs>. Click **Authorize** and paste the same key.
 - **OpenAPI contract:** `/api/v1/openapi.json`.
 - **Stop:** `docker compose down`. The data persists in the `ipam_pgdata` volume. `docker compose down -v` deletes it.
 
@@ -71,11 +80,24 @@ Invoke-RestMethod "$base/lookup/vlan?site=X9&vlan=VLAN_OT_SERVER&field=dnsServer
 | Lookups | `GET /lookup/host-ip` (`resolve=assign`), `GET /lookup/vlan` (every §8.2.1 field plus `validateOctet`), `GET /lookup/network`, `POST /lookup:resolve-tokens` |
 | Governance | `GET /audit`, `GET /site-codes`, `GET /healthz`, `GET /readyz` |
 
-These are deferred to later phases, per the POC scope: Entra ID and MFA, key scopes and expiry management, the hash-chained audit and SIEM forwarding, the `TESTING` state and two-person release, site retire and drift detection, the web UI, the legacy import, the MCP server and PowerShell module, and high availability.
+`POST /templates:layout` lays out unsaved template content for the builder. It's also where a bulk rule's proposed VLANs appear before they're saved.
+
+These are deferred to later phases, per the POC scope:
+- Entra ID and MFA;
+- key scopes and expiry management;
+- the hash-chained audit and SIEM forwarding;
+- the `TESTING` state and two-person release;
+- site retire and drift detection;
+- the legacy import;
+- the MCP server and PowerShell module;
+- high availability.
+
+The POC UI is a testing front end, not the Phase 5 UI. It signs in with the API key, edits only the first block of a multi-block template, and has no version compare or migration views.
 
 ## Repository layout
 
 ```
+web/               POC web UI (index.html, app.css, js/ ES modules; no build step)
 engine/            nextdc_ipam_engine - layout, split/merge, host addressing, lookups (stdlib only)
 api/app/           FastAPI app: routers/, services/, auth, audit middleware, bootstrap
 api/migrations/    SQL schema (exclusion constraints, append-only audit)
