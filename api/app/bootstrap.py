@@ -16,6 +16,7 @@ from psycopg.types.json import Jsonb
 from .auth import ensure_bootstrap_key
 from .config import settings
 from .db import tx
+from .security import SYSTEM_ROLES, hash_password
 from .services import templates as tsvc
 
 log = logging.getLogger("ipam.bootstrap")
@@ -115,5 +116,38 @@ def seed() -> dict[str, int]:
         if settings.bootstrap_api_key:
             ensure_bootstrap_key(conn, settings.bootstrap_api_key)
         else:
-            log.warning("IPAM_BOOTSTRAP_API_KEY isn't set; no API key is registered, so every call will get 401")
+            log.warning("IPAM_BOOTSTRAP_API_KEY isn't set; no API key is registered for scripts and tests")
+
+        _seed_roles(conn)
+        counts["adminCreated"] = _seed_admin(conn)
     return counts
+
+
+def _seed_roles(conn) -> None:
+    """System roles are defined in code and refreshed on every start, so their permissions can't drift."""
+    for r in SYSTEM_ROLES:
+        conn.execute(
+            """INSERT INTO role (role_key, name, description, is_system) VALUES (%s, %s, %s, true)
+               ON CONFLICT (role_key) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, is_system = true""",
+            (r["key"], r["name"], r["description"]),
+        )
+        conn.execute("DELETE FROM role_permission WHERE role_key = %s", (r["key"],))
+        for p in r["permissions"]:
+            conn.execute("INSERT INTO role_permission (role_key, permission) VALUES (%s, %s)", (r["key"], p))
+
+
+def _seed_admin(conn) -> int:
+    """First administrator, only when there are no users. Must change the password and enrol 2FA at first sign-in."""
+    if conn.execute("SELECT 1 FROM app_user LIMIT 1").fetchone():
+        return 0
+    if not settings.admin_password:
+        log.warning("No users exist and IPAM_ADMIN_PASSWORD isn't set, so nobody can sign in to the UI")
+        return 0
+    row = conn.execute(
+        """INSERT INTO app_user (username, full_name, password_hash, must_change_password, created_by)
+           VALUES (%s, 'IPAM Administrator', %s, true, 'seed') RETURNING user_id""",
+        (settings.admin_username.lower(), hash_password(settings.admin_password)),
+    ).fetchone()
+    conn.execute("INSERT INTO user_role (user_id, role_key) VALUES (%s, 'admin')", (row["user_id"],))
+    log.info("created first administrator '%s' (password from IPAM_ADMIN_PASSWORD; change forced at first sign-in)", settings.admin_username)
+    return 1

@@ -39,3 +39,12 @@ settings:
   avoidZeroAndBroadcastOctetsInSupernets: true
   twoPersonRelease: false        # off for the POC (spec §5.5.1 allows this in non-production)
   dnsMembers: [WDC01, WDC02]     # host-pool members that supply the derived dnsServers field
+  # Sign-in and 2FA (the PAMdora model)
+  sessionIdleMinutes: 30
+  sessionAbsoluteHours: 8
+  maxFailedLogins: 5             # then the account (or its 2FA) locks for lockoutMinutes
+  lockoutMinutes: 15
+  mfaRequiredForRoles: [admin]   # these roles must enrol an authenticator app before doing anything
+  # High-risk actions that need a fresh 2FA code; one code covers stepUpWindowMinutes (0 = every time)
+  stepUpActions: [templates.release, sites.confirm, sites.release, users.manage, apikeys.manage, mfa.replace]
+  stepUpWindowMinutes: 5

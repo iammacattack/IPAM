@@ -15,6 +15,14 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "avoidZeroAndBroadcastOctetsInSupernets": True,
     "twoPersonRelease": False,
     "dnsMembers": ["WDC01", "WDC02"],
+    # Security (spec §16.3 defaults)
+    "sessionIdleMinutes": 30,
+    "sessionAbsoluteHours": 8,
+    "maxFailedLogins": 5,
+    "lockoutMinutes": 15,
+    "mfaRequiredForRoles": ["admin"],
+    "stepUpActions": ["templates.release", "sites.confirm", "sites.release", "users.manage", "apikeys.manage", "mfa.replace"],
+    "stepUpWindowMinutes": 5,
 }
 
 

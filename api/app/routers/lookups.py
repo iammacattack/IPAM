@@ -49,8 +49,8 @@ def lookup_host_ip(
     assigning = resolve == "assign"
     if resolve not in (None, "assign"):
         raise IpamError("IPAM-BAD-REQUEST", "resolve must be 'assign' if given")
-    if assigning and "hosts:write" not in principal.scopes:
-        raise IpamError("IPAM-SCOPE-MISSING", "resolve=assign needs the 'hosts:write' scope")
+    if assigning and not principal.can("hosts.assign"):
+        raise IpamError("IPAM-PERMISSION-DENIED", "Assigning a host needs the hosts.assign permission", status=403)
     note(request, "host.assign" if assigning else "lookup.host", objectType="host", objectKey=host or role, siteCode=code)
     with tx() as conn:
         site_row, rec = lsvc.find_host(conn, code, vlan=vlan, host=host, role=role, instance=instance, for_update=assigning)

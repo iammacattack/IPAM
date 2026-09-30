@@ -11,6 +11,11 @@ APP_DIR = Path(__file__).resolve().parent
 class Settings:
     database_url: str = os.environ.get("DATABASE_URL", "postgresql://ipam:ipam@localhost:5432/ipam")
     bootstrap_api_key: str | None = os.environ.get("IPAM_BOOTSTRAP_API_KEY") or None
+    secret_key: str | None = os.environ.get("IPAM_SECRET_KEY") or None
+    admin_username: str = os.environ.get("IPAM_ADMIN_USERNAME", "admin")
+    admin_password: str | None = os.environ.get("IPAM_ADMIN_PASSWORD") or None
+    # Off for http://127.0.0.1 in the POC; must be on behind TLS.
+    cookie_secure: bool = os.environ.get("IPAM_COOKIE_SECURE", "false").lower() == "true"
     seed_dir: Path = Path(os.environ.get("IPAM_SEED_DIR", str(APP_DIR.parents[1] / "seed")))
     migrations_dir: Path = Path(os.environ.get("IPAM_MIGRATIONS_DIR", str(APP_DIR.parent / "migrations")))
     web_dir: Path = Path(os.environ.get("IPAM_WEB_DIR", str(APP_DIR.parents[1] / "web")))
@@ -21,5 +26,5 @@ class Settings:
 settings = Settings()
 
 API_PREFIX = "/api/v1"
-ALL_SCOPES = ["read", "hosts:reserve", "hosts:write", "sites:deploy", "templates:write"]
+ALL_SCOPES = ["read", "hosts:reserve", "hosts:write", "sites:deploy", "templates:write", "audit:read"]
 LIVE_SITE_STATUSES = ("reserved", "allocated", "active", "decommissioning")

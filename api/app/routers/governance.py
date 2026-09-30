@@ -38,7 +38,7 @@ def audit(
     q: str | None = Query(None, description="Keyword across route, query, object and actor"),
     since: datetime | None = None,
     limit: int = Query(100, ge=1, le=1000),
-    _: Principal = Depends(require("read")),
+    _: Principal = Depends(require("audit.read")),
 ):
     """Basic audit query for the POC. The full viewer (FR-17) is Phase 5."""
     note(request, "audit.read")

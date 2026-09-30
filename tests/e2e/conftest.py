@@ -35,6 +35,7 @@ def reset_allocations():
     if reset:
         with psycopg.connect(DATABASE_URL) as conn:
             conn.execute("TRUNCATE ip_record, subnet, block, site, site_code CASCADE")
+            conn.execute("DELETE FROM app_user WHERE username LIKE 'pt-%'")
             _drop_test_templates(conn)
     yield
     if reset:

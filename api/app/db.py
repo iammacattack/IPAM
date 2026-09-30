@@ -59,12 +59,17 @@ def tx() -> Iterator[psycopg.Connection]:
     """A connection inside one transaction; commits on success, rolls back on error."""
     pool = open_pool()
     with pool.connection() as conn:
+        conn.autocommit = True  # so transaction() below is the real outer transaction, not a savepoint
         with conn.transaction():
             yield conn
 
 
 @contextmanager
 def autocommit() -> Iterator[psycopg.Connection]:
+    """Each statement commits on its own, so a write survives even if the caller then raises
+    (a failed-2FA counter, a revoked session, an audit row). tx() still gets a real transaction:
+    conn.transaction() issues BEGIN/COMMIT explicitly when autocommit is on."""
     pool = open_pool()
     with pool.connection() as conn:
+        conn.autocommit = True
         yield conn

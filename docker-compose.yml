@@ -28,6 +28,10 @@ services:
     environment:
       DATABASE_URL: postgresql://ipam:${POSTGRES_PASSWORD}@db:5432/ipam
       IPAM_BOOTSTRAP_API_KEY: ${IPAM_BOOTSTRAP_API_KEY:?Set IPAM_BOOTSTRAP_API_KEY in .env}
+      IPAM_SECRET_KEY: ${IPAM_SECRET_KEY:?Set IPAM_SECRET_KEY in .env (run scripts/Initialize-IpamEnv.ps1)}
+      IPAM_ADMIN_USERNAME: ${IPAM_ADMIN_USERNAME:-admin}
+      IPAM_ADMIN_PASSWORD: ${IPAM_ADMIN_PASSWORD:-}
+      IPAM_COOKIE_SECURE: ${IPAM_COOKIE_SECURE:-false}
       IPAM_EXPIRY_SWEEP_SECONDS: ${IPAM_EXPIRY_SWEEP_SECONDS:-60}
     depends_on:
       db:

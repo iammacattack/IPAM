@@ -66,7 +66,7 @@ def reserve_site(
     body: SiteIn,
     dryRun: bool = False,
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
-    principal: Principal = Depends(require("sites:deploy")),
+    principal: Principal = Depends(require("sites.deploy")),
 ):
     """Step 1 of 2 (FR-08): reserve. Allocates the block and holds every subnet, gateway and
     fixed host-pool member as `reserved` until `:confirm`, `:release` or expiry."""
@@ -89,7 +89,7 @@ def reserve_site(
 
 
 @router.post("/sites/{site_code}:confirm")
-def confirm_site(request: Request, site_code: str, body: ConfirmIn, principal: Principal = Depends(require("sites:deploy"))):
+def confirm_site(request: Request, site_code: str, body: ConfirmIn, principal: Principal = Depends(require("sites.confirm", step_up="sites.confirm"))):
     """Step 2 of 2 (FR-08): reserved -> allocated. The expiry is removed and the space is permanent."""
     code = site_code.upper()
     note(request, "site.confirm", objectType="site", objectKey=code, siteCode=code)
@@ -101,7 +101,7 @@ def confirm_site(request: Request, site_code: str, body: ConfirmIn, principal: P
 
 
 @router.post("/sites/{site_code}:extend")
-def extend_site(request: Request, site_code: str, body: ExtendIn, principal: Principal = Depends(require("sites:deploy"))):
+def extend_site(request: Request, site_code: str, body: ExtendIn, principal: Principal = Depends(require("sites.deploy"))):
     code = site_code.upper()
     note(request, "site.extend", objectType="site", objectKey=code, siteCode=code)
     with tx() as conn:
@@ -110,7 +110,7 @@ def extend_site(request: Request, site_code: str, body: ExtendIn, principal: Pri
 
 
 @router.post("/sites/{site_code}:release")
-def release_site(request: Request, site_code: str, principal: Principal = Depends(require("sites:deploy"))):
+def release_site(request: Request, site_code: str, principal: Principal = Depends(require("sites.release", step_up="sites.release"))):
     """Cancel a reservation. The space returns to the pool at once."""
     code = site_code.upper()
     note(request, "site.release", objectType="site", objectKey=code, siteCode=code)

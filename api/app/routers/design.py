@@ -133,7 +133,7 @@ class VlanIn(BaseModel):
 
 
 @router.post("/vlans", status_code=201, tags=["design"])
-def create_vlan(request: Request, body: VlanIn, principal: Principal = Depends(require("templates:write"))):
+def create_vlan(request: Request, body: VlanIn, principal: Principal = Depends(require("vlans.write"))):
     note(request, "vlan.create", objectType="vlan", objectKey=body.vlanKey, changes={"after": body.model_dump(by_alias=True)})
     try:
         with tx() as conn:
@@ -234,7 +234,7 @@ def list_templates(request: Request, state: str | None = None, _: Principal = De
 
 
 @router.post("/templates", status_code=201, tags=["templates"])
-def create_template(request: Request, body: TemplateIn, principal: Principal = Depends(require("templates:write"))):
+def create_template(request: Request, body: TemplateIn, principal: Principal = Depends(require("templates.write"))):
     key = body.templateKey.strip().upper()
     if not TEMPLATE_KEY.match(key):
         raise IpamError("IPAM-TEMPLATE-INVALID", "templateKey must be UPPER-KEBAB, e.g. CAT-100")
@@ -276,7 +276,7 @@ def get_template(request: Request, key: str, _: Principal = Depends(require("rea
 
 
 @router.post("/templates/{key}/versions", status_code=201, tags=["templates"])
-def new_version(request: Request, key: str, body: VersionIn, principal: Principal = Depends(require("templates:write"))):
+def new_version(request: Request, key: str, body: VersionIn, principal: Principal = Depends(require("templates.write"))):
     """New DRAFT: given content, or a copy of fromVersion (default: the latest)."""
     key = key.upper()
     note(request, "template.version_create", objectType="template", objectKey=key)
@@ -306,7 +306,7 @@ def get_version(request: Request, key: str, version: int, _: Principal = Depends
 
 
 @router.patch("/templates/{key}/versions/{version:int}", tags=["templates"])
-def patch_version(request: Request, key: str, version: int, body: ContentIn, _: Principal = Depends(require("templates:write"))):
+def patch_version(request: Request, key: str, version: int, body: ContentIn, _: Principal = Depends(require("templates.write"))):
     note(request, "template.update", objectType="template", objectKey=f"{key.upper()}@v{version}")
     with tx() as conn:
         row, created = tsvc.update_draft(conn, key.upper(), version, body.content)
@@ -322,7 +322,7 @@ def validate_version(request: Request, key: str, version: int, _: Principal = De
 
 
 @router.post("/templates/{key}/versions/{version:int}:release", tags=["templates"])
-def release_version(request: Request, key: str, version: int, body: ReleaseIn, principal: Principal = Depends(require("templates:write"))):
+def release_version(request: Request, key: str, version: int, body: ReleaseIn, principal: Principal = Depends(require("templates.release", step_up="templates.release"))):
     note(request, "template.release", objectType="template", objectKey=f"{key.upper()}@v{version}")
     with tx() as conn:
         row = tsvc.release(conn, key.upper(), version, body.releaseNotes, body.evidence, principal.actor_id)
