@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable
 
-from fastapi import Request
+from fastapi import Request, Security
+from fastapi.security import APIKeyHeader
 
 from .config import ALL_SCOPES
 from .db import autocommit
@@ -94,8 +95,16 @@ def authenticate(request: Request) -> Principal:
     return principal
 
 
-def require(scope: str) -> Callable[[Request], Principal]:
-    def dependency(request: Request) -> Principal:
+# Declared so Swagger UI shows an Authorize button; authenticate() reads the header itself.
+api_key_header = APIKeyHeader(
+    name="X-API-Key",
+    auto_error=False,
+    description="Paste the IPAM_BOOTSTRAP_API_KEY value from .env",
+)
+
+
+def require(scope: str) -> Callable[..., Principal]:
+    def dependency(request: Request, _key: str | None = Security(api_key_header)) -> Principal:
         principal = authenticate(request)
         if scope not in principal.scopes:
             raise IpamError("IPAM-SCOPE-MISSING", f"This call needs the '{scope}' scope")
