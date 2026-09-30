@@ -1,0 +1,41 @@
+# VRFs and pools (spec §5.2, §5.3). All of this is configuration, not code.
+vrfs:
+  - { vrfKey: CORP, description: Corporate IT routing domain }
+  - { vrfKey: DCS, description: Data centre services / OT routing domain }
+  - { vrfKey: NXT, description: WAN / transit; site blocks live here }
+  - { vrfKey: INTERNET, description: Public address space }
+  - { vrfKey: DMZ, description: DMZ }
+  - { vrfKey: OOB, description: Out-of-band management }
+
+pools:
+  - poolKey: ENTERPRISE
+    vrf: NXT
+    prefixes: [10.0.0.0/8]
+    allocationPrefixLength: null
+    uniqueness: enterprise
+    description: Enterprise root (RFC 1918). Extend with 172.16.0.0/12 or 192.168.0.0/16 as needed.
+  - poolKey: SITE-POOL-AU
+    parentPool: ENTERPRISE
+    vrf: NXT
+    prefixes: [10.0.0.0/8]
+    allocationPrefixLength: 16
+    strategy: first-fit
+    uniqueness: enterprise
+    exclusions:
+      - 10.0.0.0/16      # WAN transit
+      - 10.100.0.0/16
+      - 10.101.0.0/16    # 10.101-10.108 OOB
+      - 10.102.0.0/15
+      - 10.104.0.0/14
+      - 10.108.0.0/16
+      - 10.200.0.0/13    # "10.2xx" guest and OOB CAT ranges
+      - 10.208.0.0/12
+      - 10.224.0.0/11
+    description: Site /16 blocks for Australian sites. Legacy /16s get added as exclusions at import (Phase 6).
+
+settings:
+  siteReservationDays: 14
+  siteReservationMaxDays: 90
+  avoidZeroAndBroadcastOctetsInSupernets: true
+  twoPersonRelease: false        # off for the POC (spec §5.5.1 allows this in non-production)
+  dnsMembers: [WDC01, WDC02]     # host-pool members that supply the derived dnsServers field

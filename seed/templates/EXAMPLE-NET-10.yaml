@@ -1,0 +1,49 @@
+# Reference template for spec §17.1 (Workflow 1).
+# /16 block, /24 units. CORP = first 12 units split to /25 (24 subnets);
+# DCS = remaining 244 units with 0.0.80.0/24-0.0.83.0/24 merged to a /22 (241 subnets).
+# Total 265. To use the 240-unit DCS extent instead (261 total), set DCS units: 240.
+templateKey: EXAMPLE-NET-10
+description: Workflow 1 reference template - CORP 24 x /25, DCS 241 subnets incl. one /22
+release:
+  notes: Seeded POC reference template (spec §17.1)
+  evidence: Engine tests test_example_net_10_*
+content:
+  blocks:
+    - blockKey: SITE
+      prefixLength: 16
+      vrf: NXT
+      defaultPool: SITE-POOL-AU
+      unitPrefix: 24
+      sections:
+        - sectionKey: CORP
+          orgDomain: IT
+          vrf: CORP
+          extent: { start: auto, units: 12 }
+          subnetOverrides:
+            - { relativeCidr: 0.0.0.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.1.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.2.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.3.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.4.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.5.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.6.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.7.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.8.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.9.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.10.0/24, splitTo: 25 }
+            - { relativeCidr: 0.0.11.0/24, splitTo: 25 }
+          vlanBindings:
+            - { relativeCidr: 0.0.1.0/25, vlanKey: CORP-SERVERS }
+          # Lower halves 3000 + third octet, upper halves 3100 + third octet.
+          vlanRule: { idBase: 3000, positionStep: 100, class: CORP, securityZone: Internal }
+        - sectionKey: DCS
+          orgDomain: OT
+          vrf: DCS
+          extent: { start: auto, units: remaining }
+          subnetOverrides:
+            - { relativeCidr: 0.0.80.0/22, mergeFrom: 24 }
+          vlanBindings:
+            - { relativeCidr: 0.0.13.0/24, vlanKey: DCS-SERVERS }
+            - { relativeCidr: 0.0.80.0/22, vlanKey: DCS-SECURITY }
+          # VLAN ID = 2000 + third octet (spec §5.4 bulk-rule example).
+          vlanRule: { idBase: 2000, class: DCS, securityZone: DataCentre }

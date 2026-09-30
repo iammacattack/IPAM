@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nextdc-ipam-engine"
+version = "0.1.0"
+description = "NEXTDC IPAM template and host-addressing engine (no web or database dependencies)"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools]
+packages = ["nextdc_ipam_engine"]

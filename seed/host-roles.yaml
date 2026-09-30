@@ -1,0 +1,73 @@
+# Host type pools (spec §5.6 seed table). Positions are index.octet.
+# Home VLANs are POC assumptions where the spec leaves them to the administrator.
+hostRoles:
+  - roleCode: WDC
+    name: Domain controllers (DNS1/DNS2)
+    vlanKeys: [CORP-SERVERS, DCS-SERVERS]
+    hostnamePattern: "{CC}{SITE}{DOMAIN}{ROLE}{NN}"
+    members:
+      - { name: WDC01, kind: fixed, hostPosition: "0.61" }
+      - { name: WDC02, kind: fixed, hostPosition: "0.62" }
+
+  - roleCode: HYP
+    name: Hyper-V cluster nodes
+    vlanKeys: [CORP-HYPERV-CLUSTER-MGMT]
+    members:
+      - { name: HYP01, kind: fixed, hostPosition: "0.51" }
+      - { name: HYP02, kind: fixed, hostPosition: "0.52" }
+      - { name: HYP03, kind: fixed, hostPosition: "0.53" }
+      - { name: HYP04, kind: fixed, hostPosition: "0.54" }
+      - { name: HYP05, kind: fixed, hostPosition: "0.55" }
+      - { name: HYP06, kind: fixed, hostPosition: "0.56" }
+      - { name: HYP07-10, kind: reserved, rangeStart: 57, rangeEnd: 60 }
+
+  - roleCode: HYP-CLS
+    name: Hyper-V cluster name objects
+    vlanKeys: [CORP-HYPERV-CLUSTER-MGMT]
+    members:
+      - { name: HYP-CLA, kind: fixed, hostPosition: "0.221" }
+      - { name: HYP-CLB, kind: fixed, hostPosition: "0.222" }
+      - { name: HYP-CLC, kind: fixed, hostPosition: "0.223" }
+      - { name: HYP-CLD, kind: fixed, hostPosition: "0.224" }
+      - { name: HYP-CL-SPARE, kind: reserved, rangeStart: 225, rangeEnd: 225 }
+
+  - roleCode: MSS
+    name: SQL cluster nodes and instances
+    vlanKeys: [CORP-SERVERS]
+    members:
+      - { name: MSS01, kind: fixed, hostPosition: "0.111" }
+      - { name: MSS02, kind: fixed, hostPosition: "0.112" }
+      - { name: SQL-INSTANCES, kind: range, rangeStart: 113, rangeEnd: 120 }
+
+  - roleCode: RELAY
+    name: SMTP relay
+    vlanKeys: [CORP-SERVERS]
+    members:
+      - { name: RELAY01, kind: fixed, hostPosition: "0.98" }
+      - { name: RELAY02, kind: fixed, hostPosition: "0.99" }
+      - { name: RELAY-VIP, kind: fixed, hostPosition: "0.100" }
+
+  - roleCode: GEN
+    name: Genetec (directory, archiver, SIP)
+    vlanKeys: [DCS-SECURITY]
+    members:
+      - { name: GENDIR01, kind: fixed, hostPosition: "0.11" }
+      - { name: GENAM01, kind: fixed, hostPosition: "0.13" }
+      - { name: GENSIP01, kind: fixed, hostPosition: "0.15" }
+
+  # POC fixture for the supernet example in spec §5.6 / §17.3a: 1.10 on 10.9.80.0/22 -> 10.9.81.10.
+  - roleCode: NVR
+    name: Video recorders (POC fixture)
+    vlanKeys: [DCS-SECURITY]
+    members:
+      - { name: NVR01, kind: fixed, hostPosition: "1.10" }
+
+  - roleCode: NETDEV
+    name: Network devices (Device MGMT IP sheet)
+    vlanKeys: [CORP-NETMGMT, DCS-NETMGMT]
+    members:
+      - { name: WANRTR01, kind: fixed, hostPosition: "0.21" }
+      - { name: WANRTR02, kind: fixed, hostPosition: "0.22" }
+      - { name: SECFWL01-VIP, kind: fixed, hostPosition: "0.23" }
+      - { name: CRESWI01, kind: fixed, hostPosition: "0.26" }
+      - { name: CRESWI02, kind: fixed, hostPosition: "0.27" }

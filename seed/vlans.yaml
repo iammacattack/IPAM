@@ -1,0 +1,49 @@
+# VLAN library seed (spec §5.4). Curated for the POC, not a copy of the
+# Site Delivery Wizard vlan-library.json: that file carries the legacy ID
+# collisions (2007, 2013, 2076, 2080) that the import phase has to triage.
+#
+# DCS-SERVERS uses ID 2013 / v2013-DCS-SERVERS to match the spec §8.2.1 example.
+# The alias SERVERS is deliberately on two VLANs so the ambiguity rule is testable.
+vlans:
+  - vlanKey: CORP-SERVERS
+    vlanId: 3001
+    vlanName: v3001-SERVERS
+    aliases: [SERVERS, ITSERVERS]
+    class: CORP
+    securityZone: Internal
+    description: Primary server VLAN, CORP domain
+  - vlanKey: CORP-NETMGMT
+    vlanId: 3008
+    vlanName: v3008-NETMGMT
+    aliases: [NETMGMT]
+    class: CORP
+    securityZone: Internal
+    description: Network device management, CORP domain
+  - vlanKey: CORP-HYPERV-CLUSTER-MGMT
+    vlanId: 3021
+    vlanName: v3021-HYPERV-CLUSTER-MGMT
+    aliases: [HYPERV-CLUSTER-MGMT]
+    class: CORP
+    securityZone: Internal
+    description: Hyper-V cluster management
+  - vlanKey: DCS-SERVERS
+    vlanId: 2013
+    vlanName: v2013-DCS-SERVERS
+    aliases: [VLAN_OT_SERVER, SERVERS]
+    class: DCS
+    securityZone: DataCentre
+    description: Primary server VLAN, DCS (OT) domain
+  - vlanKey: DCS-NETMGMT
+    vlanId: 2008
+    vlanName: v2008-NETMGMT
+    aliases: [DCS-NETMGMT-SW]
+    class: DCS
+    securityZone: DataCentre
+    description: Network device management, DCS domain
+  - vlanKey: DCS-SECURITY
+    vlanId: 2080
+    vlanName: v2080-DCS-SECURITY
+    aliases: [VLAN_OT_SECURITY]
+    class: DCS
+    securityZone: DataCentre
+    description: Physical security devices (supernet in EXAMPLE-NET-10)
