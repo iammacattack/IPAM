@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .. import repo
 from ..audit import note, system_event
@@ -18,23 +18,39 @@ router = APIRouter(tags=["sites"])
 
 
 class SiteIn(BaseModel):
-    siteCode: str
-    countryCode: str | None = None
-    templateKey: str
-    templateVersion: int | None = None
-    baseIp: str | None = None
-    blocks: dict[str, str] | None = None
-    pool: str | None = None
-    reservationDays: int | None = Field(None, ge=1)
-    externalRef: str | None = None
+    # Swagger pre-fills the request box from this example, so it must be a request that works as-is.
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"siteCode": "DEMO1", "countryCode": "AU", "templateKey": "EXAMPLE-NET-10"}]}
+    )
+
+    siteCode: str = Field(description="Site code, used as supplied (e.g. X9). Must not be held by a live site.")
+    countryCode: str | None = Field(None, description="ISO 3166-1 alpha-2, e.g. AU")
+    templateKey: str = Field(description="A template with a RELEASED version, e.g. EXAMPLE-NET-10")
+    templateVersion: int | None = Field(None, ge=1, description="Leave out to use the RELEASED version")
+    baseIp: str | None = Field(None, description="Leave out to let the pool pick the next free block, e.g. 10.9.0.0")
+    blocks: dict[str, str] | None = Field(None, description="Multi-block templates only: {blockKey: cidr}")
+    pool: str | None = Field(None, description="Leave out to use the template's default pool")
+    reservationDays: int | None = Field(None, ge=1, description="Leave out for the default (14 days)")
+    externalRef: str | None = Field(None, description="Optional change or ticket reference")
+
+    @field_validator("countryCode", "baseIp", "pool", "externalRef", mode="before")
+    @classmethod
+    def _blank_is_absent(cls, v: Any) -> Any:
+        return None if isinstance(v, str) and not v.strip() else v
 
 
 class ConfirmIn(BaseModel):
-    reservationId: str | None = None
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"reservationId": "paste the reservationId from the POST /sites response"}]}
+    )
+
+    reservationId: str | None = Field(None, description="From the reservation block of the POST /sites response")
     changeRef: str | None = None
 
 
 class ExtendIn(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"days": 14}]})
+
     days: int = Field(ge=1)
 
 

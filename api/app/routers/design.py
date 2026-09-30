@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from psycopg import errors as pg_errors
 
 from ..audit import note
@@ -113,6 +113,16 @@ def get_vlan(request: Request, vlan: str, _: Principal = Depends(require("read")
 
 
 class VlanIn(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "examples": [
+                {"vlanKey": "DCS-DEMO", "vlanId": 2999, "vlanName": "v2999-DCS-DEMO", "aliases": ["DEMO"],
+                 "class": "DCS", "securityZone": "DataCentre", "description": "Demo VLAN"}
+            ]
+        },
+    )
+
     vlanKey: str = Field(pattern=r"^[A-Z0-9][A-Z0-9_-]*$")
     vlanId: int | None = Field(None, ge=2, le=4094)
     vlanName: str
@@ -183,8 +193,10 @@ class TemplateIn(BaseModel):
 
 
 class VersionIn(BaseModel):
-    content: dict[str, Any] | None = None
-    fromVersion: int | None = None
+    model_config = ConfigDict(json_schema_extra={"examples": [{}]})
+
+    content: dict[str, Any] | None = Field(None, description="Leave out to copy an existing version")
+    fromVersion: int | None = Field(None, ge=1, description="Version to copy; leave out for the latest")
 
 
 class ContentIn(BaseModel):
@@ -192,6 +204,10 @@ class ContentIn(BaseModel):
 
 
 class ReleaseIn(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"releaseNotes": "What changed and why", "evidence": "Validate report / test site"}]}
+    )
+
     releaseNotes: str | None = None
     evidence: str | None = None
 

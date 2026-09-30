@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..audit import note
 from ..auth import Principal, require
@@ -107,6 +107,22 @@ class Token(BaseModel):
 
 
 class TokensIn(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "site": "DEMO1",
+                    "tokens": [
+                        {"vlan": "VLAN_OT_SERVER", "host": "WDC01"},
+                        {"vlan": "VLAN_OT_SERVER", "field": "gateway"},
+                        {"vlan": "VLAN_OT_SERVER", "field": "mask"},
+                        {"vlan": "VLAN_OT_SERVER", "field": "dnsServers"},
+                    ],
+                }
+            ]
+        }
+    )
+
     site: str
     tokens: list[Token]
 
