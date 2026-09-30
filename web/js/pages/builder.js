@@ -6,6 +6,7 @@ import {
 } from '../dom.js';
 import { supernet, overlaps, contains, parseCidr, relocate, size } from '../net.js';
 import { setLeaveGuard } from '../main.js';
+import { can } from '../session.js';
 import { releaseDialog } from './templates.js';
 
 const ZONES = ['', 'Internal', 'DataCentre', 'DMZ', 'OOB', 'Perimeter'];
@@ -251,7 +252,7 @@ function renderStatus() {
       h('span', { class: 'spacer' }),
       h('label', { class: 'inline small' }, 'Show at base ', base),
       button(saveLabel, save, 'primary'),
-      button('Release…', release, '', { disabled: st.isNew })),
+      can('templates.release') ? button('Release…', release, '', { disabled: st.isNew }) : null),
     problems ? h('div', { class: 'alert alert-error compact' }, h('ul', {}, L.errors.slice(0, 4).map((e) => h('li', {}, h('code', {}, e.code), ' ', e.message, e.suggested ? ` → try ${e.suggested}` : ''))), problems > 4 ? h('a', { href: '#', onClick: (e) => { e.preventDefault(); showProblems(); } }, `…and ${problems - 4} more`) : null) : null);
 }
 

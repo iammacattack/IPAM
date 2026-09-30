@@ -1,5 +1,6 @@
 // Sites (Workflow 2): reserve from a released template, confirm, extend, release; browse the design; assign hosts.
 import { get, post, errorPanel } from '../api.js';
+import { can } from '../session.js';
 import {
   h, mount, card, chip, table, button, input, select, field, modal, confirmBox, toast, fmtTime, fromNow, shortHash, downloadCsv, copyButton,
 } from '../dom.js';
@@ -18,7 +19,7 @@ export async function renderList(root, active = 'live') {
   const f = FILTERS.find((x) => x.id === active);
   const sites = await get('/sites', { status: f.status });
   mount(root,
-    h('div', { class: 'page-head' }, h('h1', {}, 'Sites'), h('div', { class: 'actions' }, button('New site', () => { location.hash = '#/sites/new'; }, 'primary'))),
+    h('div', { class: 'page-head' }, h('h1', {}, 'Sites'), h('div', { class: 'actions' }, can('sites.deploy') ? button('New site', () => { location.hash = '#/sites/new'; }, 'primary') : null)),
     h('div', { class: 'tabs' }, FILTERS.map((x) => h('button', { type: 'button', class: `tab ${x.id === active ? 'active' : ''}`, onClick: () => renderList(root, x.id) }, x.label))),
     card(null, table([
       { label: 'Site', value: (s) => h('a', { href: `#/sites/${encodeURIComponent(s.siteCode)}` }, s.siteCode) },
@@ -106,7 +107,7 @@ export async function renderDetail(root, code) {
   const reload = () => renderDetail(root, code);
 
   const actions = [];
-  if (d.status === 'reserved') {
+  if (d.status === 'reserved' && can('sites.confirm')) {
     actions.push(button('Confirm allocation', async () => {
       if (!(await confirmBox(`Confirm ${d.siteCode}`, `This makes ${d.blocks.map((b) => b.cidr).join(', ')} a permanent allocation for ${d.siteCode}. After this, host addresses can be assigned to machines.`, 'Confirm'))) return;
       try {
@@ -115,12 +116,16 @@ export async function renderDetail(root, code) {
         reload();
       } catch (err) { modal({ title: 'Couldn\'t confirm', body: errorPanel(err) }); }
     }, 'primary'));
+  }
+  if (d.status === 'reserved' && can('sites.deploy')) {
     actions.push(button('Extend…', async () => {
       const days = input({ type: 'number', value: 14, min: 1, max: 90, class: 'narrow' });
       const v = await modal({ title: 'Extend reservation', body: field('New expiry: this many days from now', days), actions: [{ label: 'Cancel', value: null }, { label: 'Extend', kind: 'primary', value: () => Number(days.value) }] });
       if (!v) return;
       try { await post(`/sites/${encodeURIComponent(code)}:extend`, { days: v }); toast('Reservation extended', 'success'); reload(); } catch (err) { modal({ title: 'Couldn\'t extend', body: errorPanel(err) }); }
     }));
+  }
+  if (d.status === 'reserved' && can('sites.release')) {
     actions.push(button('Release', async () => {
       if (!(await confirmBox(`Release ${d.siteCode}`, 'Cancel this reservation. The block goes straight back to the pool.', 'Release', 'danger'))) return;
       try { await post(`/sites/${encodeURIComponent(code)}:release`); toast(`${d.siteCode} released`, 'success'); location.hash = '#/sites'; } catch (err) { modal({ title: 'Couldn\'t release', body: errorPanel(err) }); }
@@ -189,7 +194,7 @@ function networkRows(d, n, confirmed, reload) {
     { label: 'IP', value: (x) => h('span', {}, h('code', {}, x.ip), ' ', copyButton(x.ip)) },
     { label: 'Hostname', value: (x) => x.hostname || h('span', { class: 'muted' }, '—') },
     { label: 'Status', value: (x) => chip(x.status) },
-    { label: '', value: (x) => (x.status === 'reserved-pattern' ? button('Assign…', () => assign(d, n, x, reload), 'small', { disabled: !confirmed, title: confirmed ? 'Claim this address for a machine' : 'Confirm the site first' }) : '') },
+    { label: '', value: (x) => (x.status === 'reserved-pattern' && can('hosts.assign') ? button('Assign…', () => assign(d, n, x, reload), 'small', { disabled: !confirmed, title: confirmed ? 'Claim this address for a machine' : 'Confirm the site first' }) : '') },
   ], n.hosts)));
   return [main, hostRows];
 }

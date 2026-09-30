@@ -1,4 +1,5 @@
 import { get, post, errorPanel } from '../api.js';
+import { can } from '../session.js';
 import {
   h, mount, card, chip, table, tabs, fmtTime, shortHash, button, input, field, modal, toast, copyButton,
 } from '../dom.js';
@@ -11,7 +12,7 @@ export async function renderList(root) {
   mount(root,
     h('div', { class: 'page-head' },
       h('h1', {}, 'Site templates'),
-      h('div', { class: 'actions' }, button('New template', () => { location.hash = '#/builder/new'; }, 'primary'))),
+      h('div', { class: 'actions' }, can('templates.write') ? button('New template', () => { location.hash = '#/builder/new'; }, 'primary') : null)),
     h('p', { class: 'muted' }, 'Only RELEASED versions can be deployed to a site. Drafts are editable in the builder; released versions are frozen.'),
     card(null, table([
       { label: 'Template', value: (t) => h('a', { href: `#/templates/${encodeURIComponent(t.templateKey)}` }, t.templateKey) },
@@ -48,18 +49,18 @@ export async function renderDetail(root, key, version) {
   const tabBar = h('div');
 
   const actions = [];
-  if (v.state === 'DRAFT') {
+  if (v.state === 'DRAFT' && can('templates.write')) {
     actions.push(button('Edit in builder', () => { location.hash = `#/builder/${encodeURIComponent(key)}/${v.version}`; }, 'primary'));
-    actions.push(button('Release…', () => releaseDialog(key, v, layout), ''));
+    if (can('templates.release')) actions.push(button('Release…', () => releaseDialog(key, v, layout), ''));
   }
-  actions.push(button('New draft from this version', async () => {
+  if (can('templates.write')) actions.push(button('New draft from this version', async () => {
     try {
       const nv = await post(`/templates/${encodeURIComponent(key)}/versions`, { fromVersion: v.version });
       toast(`Created ${nv.ref} (DRAFT)`, 'success');
       location.hash = `#/builder/${encodeURIComponent(key)}/${nv.version}`;
     } catch (err) { modal({ title: 'Couldn\'t create a draft', body: errorPanel(err) }); }
   }));
-  actions.push(button('Deploy to a site…', () => { location.hash = `#/sites/new?template=${encodeURIComponent(key)}`; }, '', { disabled: v.state !== 'RELEASED' }));
+  if (can('sites.deploy')) actions.push(button('Deploy to a site…', () => { location.hash = `#/sites/new?template=${encodeURIComponent(key)}`; }, '', { disabled: v.state !== 'RELEASED' }));
 
   mount(root,
     h('div', { class: 'crumbs' }, h('a', { href: '#/templates' }, 'Templates'), ' / ', key),
