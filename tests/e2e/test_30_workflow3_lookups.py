@@ -145,10 +145,15 @@ def test_resolve_tokens_batch(iac, x9):
     assert out["resolved"] == 6 and out["failed"] == 1
 
 
-def test_lookups_are_audited(api, x9):
-    events = api.get("/audit", params={"siteCode": "X9", "action": "lookup.vlan", "limit": 50}).json()
-    assert events and any("VLAN_OT_SERVER" in (e["query"] or "") for e in events)
-    assert all(e["clientName"] == "Ansible/site-build" for e in events if e["action"] == "lookup.vlan")
+def test_lookups_are_audited(api, iac, x9):
+    # The audit log is never cleared, so look only at this call's own row.
+    r = iac.get("/lookup/vlan", params={"site": "X9", "vlan": "VLAN_OT_SERVER", "field": "gateway"})
+    events = api.get("/audit", params={"requestId": r.headers["X-Request-Id"]}).json()
+    assert len(events) == 1
+    e = events[0]
+    assert e["action"] == "lookup.vlan" and e["siteCode"] == "X9"
+    assert e["objectKey"] == "DCS-SERVERS.gateway" and "VLAN_OT_SERVER" in e["query"]
+    assert e["clientName"] == "Ansible/site-build"
 
 
 def test_host_lookup_p95_under_200ms(iac, x9):
