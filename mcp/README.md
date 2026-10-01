@@ -48,7 +48,7 @@ It's a small local server (spec §9). It runs on your workstation over stdio and
 
    Don't paste the key at the PowerShell prompt itself: it would end up in your shell history.
 
-   Paste the key when asked. It checks the key against IPAM before storing it.
+   It checks the key against IPAM before storing it.
 
 4. **Register it with Claude.**
    - **Claude Code**, from any terminal:
