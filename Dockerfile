@@ -32,6 +32,8 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-
 FROM app AS test
 USER root
 RUN pip install "pytest>=8,<10" "httpx>=0.27,<1"
+COPY mcp /app/mcp
+RUN pip install /app/mcp
 COPY tests /app/tests
 USER ipam
 WORKDIR /app

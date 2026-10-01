@@ -46,6 +46,10 @@ Other entry points:
 
 Everything binds to `127.0.0.1` only. The database isn't published to the host at all.
 
+## Claude (MCP server)
+
+`mcp/` holds a local, read-only MCP server, so Claude can answer IPAM questions directly. For example: the subnet for a VLAN at a site, VLAN definitions and usage, host IPs, what an IP belongs to, or the next free address. Set-up (install, read-only key in Windows Credential Manager, register with Claude Code or Desktop) is in [mcp/README.md](mcp/README.md).
+
 ## Sign-in, roles and 2FA
 
 This is the PAMdora model; Entra ID SSO is deferred.
@@ -132,6 +136,7 @@ Invoke-RestMethod "$base/lookup/vlan?site=X9&vlan=VLAN_OT_SERVER&field=dnsServer
 | Templates | `GET/POST /templates`, `GET /templates/{key}`, `POST /templates/{key}/versions`, `GET/PATCH /templates/{key}/versions/{v}`, `POST …/{v}:validate`, `POST …/{v}:release`, `GET …/{v}/placement`, `GET /templates/{key}/preview`, `POST /templates:layout` |
 | Sites | `POST /sites` (reserve; `?dryRun=true`; `Idempotency-Key`), `POST /sites/{code}:confirm`, `:extend`, `:release`, `:retire`, `:purge`, `DELETE /sites/{code}` (spec form), `GET /sites`, `GET /sites/{code}`, `GET /sites/{code}/design`, `GET /sites/{code}/vlans/{vlan}` |
 | Lookups | `GET /lookup/host-ip` (`resolve=assign`), `GET /lookup/vlan` (every §8.2.1 field plus `validateOctet`), `GET /lookup/network`, `POST /lookup:resolve-tokens` |
+| Search | `GET /search?q=` (IP, CIDR, hostname, VLAN, site, template), `GET /sites/{code}/roles/{role}/next-available` |
 | Governance | `GET /audit`, `GET /site-codes`, `GET /healthz`, `GET /readyz` |
 
 `POST /templates:layout` lays out unsaved template content for the builder. It's also where a bulk rule's proposed VLANs appear before they're saved.
@@ -142,7 +147,7 @@ These are deferred to later phases:
 - the `TESTING` state and two-person release;
 - drift detection;
 - the legacy import;
-- the MCP server and PowerShell module;
+- the PowerShell module, and an MCP tool that reserves addresses;
 - high availability.
 
 The builder edits only the first block of a multi-block template, and there are no version compare or migration views yet.

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ipam-mcp"
+version = "0.1.0"
+description = "MCP server for IPAM (IP Address Management): read-only lookups for Claude"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.10,<2",
+    "httpx>=0.27,<1",
+    "keyring>=25,<26",
+]
+
+[project.scripts]
+ipam-mcp = "ipam_mcp.server:main"
+ipam-mcp-setkey = "ipam_mcp.setkey:main"
+
+[tool.setuptools]
+packages = ["ipam_mcp"]
