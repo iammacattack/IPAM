@@ -88,15 +88,17 @@ def test_mcp_tools(x9):
         ("ipam_get_vlan_at_site", {"site_code": "X9", "vlan": "VLAN_OT_SERVER", "field": "gateway"}),
         ("ipam_find_vlans", {"query": "server"}),
         ("ipam_get_vlan", {"vlan": "VLAN_OT_SERVER"}),
-        ("ipam_list_site_vlans", {"site_code": "X9", "section": "CORP"}),
+        ("ipam_list_site_subnets", {"site_code": "X9", "section": "CORP"}),
         ("ipam_lookup_host", {"site_code": "X9", "host": "WDC01", "vlan": "VLAN_OT_SERVER"}),
         ("ipam_next_available", {"site_code": "X9", "role_code": "WDC", "vlan": "DCS-SERVERS"}),
         ("ipam_search", {"query": f"{x9}.81.10"}),
         ("ipam_list_templates", {}),
         ("ipam_preview_template", {"template_key": "EXAMPLE-NET-10", "base_ip": "10.250.0.0"}),
         ("ipam_get_vlan_at_site", {"site_code": "X9", "vlan": "NO_SUCH_VLAN"}),
+        ("ipam_preview_template", {"template_key": "EXAMPLE-NET-10", "base_ip": "10.250.0.0", "subnets": "assigned", "section": "CORP"}),
+        ("ipam_list_site_subnets", {"site_code": "X9", "subnets": "unassigned"}),
     ])
-    assert set(names) >= {"ipam_find_vlans", "ipam_get_vlan", "ipam_get_vlan_at_site", "ipam_list_site_vlans", "ipam_lookup_host",
+    assert set(names) >= {"ipam_find_vlans", "ipam_get_vlan", "ipam_get_vlan_at_site", "ipam_list_site_subnets", "ipam_lookup_host",
                           "ipam_next_available", "ipam_search", "ipam_list_sites", "ipam_get_site", "ipam_list_templates", "ipam_preview_template"}
     assert all(t.annotations and t.annotations.readOnlyHint for t in tools), "every tool is read-only"
 
@@ -109,18 +111,43 @@ def test_mcp_tools(x9):
     v = payload(results[3])
     assert v["vlanKey"] == "DCS-SERVERS" and v["vlanId"] == 2013 and v["usage"]["inUse"]
     corp = payload(results[4])
-    assert corp["count"] >= 24 and all(n["section"] == "CORP" for n in corp["networks"])
+    # every subnet by default, assigned or not
+    assert corp["showing"] == "all" and corp["count"] == corp["totalSubnets"] == 24
+    assert all(n["section"] == "CORP" for n in corp["subnets"]) and corp["assigned"] + corp["unassigned"] == 24
     assert payload(results[5])["ip"] == f"{x9}.13.61"
     assert payload(results[6])["results"][0]["ip"] == f"{x9}.13.62"
     assert payload(results[7])["addresses"][0]["member"] == "NVR01"
     assert any(t["templateKey"] == "EXAMPLE-NET-10" for t in payload(results[8])["templates"])
     prev = payload(results[9])
-    assert prev["blocks"][0]["cidr"] == "10.250.0.0/16" and prev["summary"]["subnetCount"] == 265
+    assert prev["blocks"][0]["cidr"] == "10.250.0.0/16" and prev["totalSubnets"] == prev["count"] == 265
+    assert len(prev["subnets"]) == 265 and {s["assigned"] for s in prev["subnets"]} == {True}  # EXAMPLE-NET-10 binds every subnet
     # errors come back as a readable tool error, not a crash
     assert results[10].isError and "IPAM-VLAN-UNKNOWN" in results[10].content[0].text
+    corp_assigned = payload(results[11])
+    assert corp_assigned["showing"] == "assigned" and corp_assigned["totalSubnets"] == 24 and all(s["assigned"] for s in corp_assigned["subnets"])
+    unassigned = payload(results[12])
+    assert unassigned["showing"] == "unassigned" and unassigned["count"] == unassigned["unassigned"] and not any(s["assigned"] for s in unassigned["subnets"])
 
 
 def test_mcp_calls_are_audited_as_the_mcp_client(api, x9):
     run_mcp([("ipam_get_vlan_at_site", {"site_code": "X9", "vlan": "DCS-SECURITY", "field": "cidr"})])
     events = api.get("/audit", params={"clientName": "ClaudeCowork-MCP/test", "limit": 20}).json()
     assert any(e["action"] == "lookup.vlan" and e["siteCode"] == "X9" for e in events)
+
+
+def test_unassigned_subnets_are_listed(api):
+    """A template with only some VLANs bound still lists every subnet (the CAT-100 case)."""
+    content = {"blocks": [{"blockKey": "SITE", "prefixLength": 16, "vrf": "NXT", "defaultPool": "SITE-POOL-AU", "unitPrefix": 24, "sections": [
+        {"sectionKey": "CORP", "vrf": "CORP", "extent": {"start": "auto", "units": 10},
+         "vlanBindings": [{"relativeCidr": "0.0.1.0/24", "vlanKey": "CORP-SERVERS"}]}]}]}
+    r = api.post("/templates", json={"templateKey": "WF1-PARTIAL", "content": content})
+    assert r.status_code == 201, r.text
+    _, results, _ = run_mcp([
+        ("ipam_preview_template", {"template_key": "WF1-PARTIAL", "version": 1, "base_ip": "10.251.0.0"}),
+        ("ipam_preview_template", {"template_key": "WF1-PARTIAL", "version": 1, "base_ip": "10.251.0.0", "subnets": "unassigned"}),
+    ])
+    full, empty_only = payload(results[0]), payload(results[1])
+    assert full["totalSubnets"] == full["count"] == 10 and full["assigned"] == 1 and full["unassigned"] == 9
+    assert [s["cidr"] for s in full["subnets"]][:3] == ["10.251.0.0/24", "10.251.1.0/24", "10.251.2.0/24"]
+    assert full["subnets"][0]["assigned"] is False and full["subnets"][0]["gateway"] == "10.251.0.1"
+    assert empty_only["count"] == 9 and "10.251.1.0/24" not in [s["cidr"] for s in empty_only["subnets"]]

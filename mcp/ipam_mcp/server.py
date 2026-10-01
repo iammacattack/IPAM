@@ -8,7 +8,7 @@ owner, with client name ClaudeCowork-MCP.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from mcp.server.fastmcp import FastMCP
@@ -28,7 +28,10 @@ DCS-SERVERS, or an alias such as VLAN_OT_SERVER. A host is a host-pool member su
 - "What's the subnet for VLAN X at site Y?" -> ipam_get_vlan_at_site
 - "What's WDC01's IP at X9?" -> ipam_lookup_host
 - "What VLANs exist for ...?" -> ipam_find_vlans; details and usage of one VLAN -> ipam_get_vlan
-- "All VLANs/subnets at a site" -> ipam_list_site_vlans
+- "All subnets at a site" -> ipam_list_site_subnets; "what would template T give me" -> ipam_preview_template
+  Both return EVERY subnet by default, including ones with no VLAN assigned yet (assigned=false).
+  Use subnets="assigned" or "unassigned" only when the user asks for that subset. Never say a subnet
+  doesn't exist because it has no VLAN: an unassigned subnet is still a real, allocated subnet.
 - "Where does 10.1.13.61 belong?" or any free-text lookup -> ipam_search
 - "Next free DC address at X9" -> ipam_next_available (it doesn't reserve anything)
 
@@ -43,6 +46,8 @@ READ = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=
 
 Site = Annotated[str, Field(description="Site code, e.g. X9 or B1")]
 Vlan = Annotated[str, Field(description="VLAN key (e.g. DCS-SERVERS) or alias (e.g. VLAN_OT_SERVER)")]
+Which = Annotated[Literal["all", "assigned", "unassigned"], Field(
+    description="all = every subnet (default); assigned = only subnets with a VLAN; unassigned = only subnets with no VLAN yet")]
 
 
 def _q(part: str) -> str:
@@ -57,8 +62,18 @@ def call(path: str, **params: Any) -> Any:
 
 
 def _network_row(n: dict[str, Any]) -> dict[str, Any]:
-    return {k: n.get(k) for k in ("section", "vlanKey", "vlanId", "vlanName", "cidr", "gateway", "mask", "prefix", "networkPortion")}
+    row = {k: n.get(k) for k in ("section", "cidr", "gateway", "mask", "prefix", "networkPortion", "vlanKey", "vlanId", "vlanName")}
+    row["assigned"] = bool(n.get("vlanKey"))
+    return row
 
+
+def _subnets(networks: list[dict[str, Any]], which: str) -> dict[str, Any]:
+    """Every subnet, or just the assigned/unassigned ones, with counts so a partial list is never mistaken for the whole."""
+    rows = [_network_row(n) for n in networks]
+    assigned = sum(r["assigned"] for r in rows)
+    picked = [r for r in rows if which == "all" or (which == "assigned") == r["assigned"]]
+    return {"showing": which, "totalSubnets": len(rows), "assigned": assigned, "unassigned": len(rows) - assigned,
+            "count": len(picked), "subnets": picked}
 
 # --------------------------------------------------------------------------- VLAN library
 
@@ -119,16 +134,15 @@ def ipam_get_vlan_at_site(
 
 
 @mcp.tool(annotations=READ)
-def ipam_list_site_vlans(
+def ipam_list_site_subnets(
     site_code: Site,
+    subnets: Which = "all",
     section: Annotated[str | None, Field(description="Only this section, e.g. CORP or DCS")] = None,
-    bound_only: Annotated[bool, Field(description="Skip subnets with no VLAN assigned")] = True,
 ) -> dict[str, Any]:
-    """Every VLAN-to-subnet mapping at a site (section, VLAN key/ID/name, CIDR, gateway, mask)."""
+    """Every subnet at a site: section, CIDR, gateway, mask and its VLAN if one is assigned (assigned=true/false).
+    Returns all subnets by default, including those with no VLAN yet; use subnets='assigned' or 'unassigned' to narrow."""
     d = call(f"/sites/{_q(site_code.upper())}/design", section=section, include="none")
-    rows = [_network_row(n) for n in d["networks"] if n.get("vlanKey") or not bound_only]
-    return {"siteCode": d["siteCode"], "status": d["status"], "blocks": d["blocks"], "count": len(rows), "networks": rows}
-
+    return {"siteCode": d["siteCode"], "status": d["status"], "blocks": d["blocks"], **_subnets(d["networks"], subnets)}
 
 # --------------------------------------------------------------------------- hosts
 
@@ -198,11 +212,14 @@ def ipam_preview_template(
     template_key: Annotated[str, Field(description="e.g. EXAMPLE-NET-10")],
     base_ip: Annotated[str | None, Field(description="e.g. 10.9.0.0; leave out to see the block the pool would pick next")] = None,
     version: Annotated[int | None, Field(ge=1)] = None,
+    subnets: Which = "all",
+    section: Annotated[str | None, Field(description="Only this section, e.g. CORP or DCS")] = None,
 ) -> dict[str, Any]:
-    """What a template would produce at a base IP: sections, subnet counts and every VLAN's subnet. Nothing is saved."""
+    """What a template would produce at a base IP: sections and every subnet with its CIDR, gateway and mask, plus its
+    VLAN if one is assigned (assigned=true/false). All subnets by default; nothing is saved."""
     p = call(f"/templates/{_q(template_key.upper())}/preview", baseIp=base_ip, version=version)
-    return {"template": p["template"], "blocks": p["blocks"], "summary": p["summary"],
-            "networks": [_network_row(n) for n in p["networks"] if n.get("vlanKey")]}
+    nets = [n for n in p["networks"] if not section or n["section"].upper() == section.upper()]
+    return {"template": p["template"], "blocks": p["blocks"], "sections": p["summary"]["sections"], **_subnets(nets, subnets)}
 
 
 def main() -> None:

@@ -18,12 +18,12 @@ It's a small local server (spec §9). It runs on your workstation over stdio and
 | `ipam_find_vlans` | Search the VLAN library by key, name, alias, ID, class or description |
 | `ipam_get_vlan` | One VLAN's definition (ID, name, aliases, class, zone) and where it's used |
 | `ipam_get_vlan_at_site` | The subnet a VLAN has at a site, with every attribute (CIDR, gateway, mask, prefix, network portion, broadcast, usable range, DNS) and its standard hosts. Pass `field` for one value |
-| `ipam_list_site_vlans` | Every VLAN-to-subnet mapping at a site, optionally for one section |
+| `ipam_list_site_subnets` | **Every** subnet at a site, with its VLAN where one is assigned (`assigned` true/false) and counts. `subnets` = `all` (default), `assigned` or `unassigned`; optionally one section |
 | `ipam_lookup_host` | A standard host's IP, by member (WDC01) or role + instance |
 | `ipam_next_available` | Next free address for a host type at a site (doesn't reserve anything) |
 | `ipam_search` | Anything: an IP, CIDR, hostname, VLAN, site or template |
 | `ipam_list_sites`, `ipam_get_site` | Sites, their blocks, status and template |
-| `ipam_list_templates`, `ipam_preview_template` | Templates and what one produces at a base IP |
+| `ipam_list_templates`, `ipam_preview_template` | Templates, and **every** subnet one produces at a base IP (same `subnets` and `section` options) |
 
 ## Set-up (Windows)
 
@@ -66,6 +66,8 @@ It's a small local server (spec §9). It runs on your workstation over stdio and
      The script waits for Claude Desktop to close, backs up `%APPDATA%\Claude\claude_desktop_config.json`, adds `mcpServers.ipam` and reopens Claude. Don't edit that file while Claude Desktop is running: the app rewrites it from memory and drops changes made underneath it.
 
 IPAM has to be running (`docker compose up -d` in the repo root).
+
+**Updating the server.** `ipam-mcp.exe` is locked while any Claude session has the server running, so pip can't reinstall over it. This venv loads `ipam_mcp` straight from the repo (an `ipam_mcp_repo.pth` file in its site-packages), so after `git pull` just start a new Claude session (or `/mcp` → reconnect in Claude Code). For a fresh install with no Claude running, `.\.venv\Scripts\pip install -e .` does the same.
 
 ## Settings (environment variables, all optional)
 
