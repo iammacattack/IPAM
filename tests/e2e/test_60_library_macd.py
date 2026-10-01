@@ -41,6 +41,7 @@ def cleanup(tag):
         conn.execute("DELETE FROM pool WHERE pool_key LIKE 'LT-%' AND parent_key IS NOT NULL")
         conn.execute("DELETE FROM pool WHERE pool_key LIKE 'LT-%'")
         conn.execute("DELETE FROM vrf WHERE vrf_key LIKE 'LT-%'")
+        conn.execute("DELETE FROM app_user WHERE username LIKE 'pt-%'")
 
 
 # ------------------------------------------------------------------ VLANs
