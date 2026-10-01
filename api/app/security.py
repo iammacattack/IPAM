@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from .config import settings
 
-ISSUER = "NEXTDC IPAM"
+ISSUER = "IPAM"
 
 # --------------------------------------------------------------------------- #
 # Permissions and system roles (spec §10.3)

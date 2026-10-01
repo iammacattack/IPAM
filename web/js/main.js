@@ -186,7 +186,7 @@ function renderCode() {
 export function authCard(title, ...children) {
   return h('div', { class: 'auth-stage' },
     h('div', { class: 'card auth-card' },
-      h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, 'IP'), h('span', {}, h('span', { class: 'brand-name' }, 'NEXTDC IPAM'), h('br'), h('span', { class: 'brand-sub' }, 'IP address management'))),
+      h('div', { class: 'brand' }, h('span', { class: 'brand-mark' }, 'IP'), h('span', {}, h('span', { class: 'brand-name' }, 'IPAM'), h('br'), h('span', { class: 'brand-sub' }, 'IP Address Management'))),
       h('h2', {}, title),
       children));
 }

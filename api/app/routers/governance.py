@@ -40,7 +40,7 @@ def audit(
     limit: int = Query(100, ge=1, le=1000),
     _: Principal = Depends(require("audit.read")),
 ):
-    """Basic audit query for the POC. The full viewer (FR-17) is Phase 5."""
+    """Search the audit log by its main columns or a keyword; newest first."""
     note(request, "audit.read")
     filters = {"action": action, "siteCode": siteCode, "actorId": actorId, "clientName": clientName, "outcome": outcome,
                "errorCode": errorCode, "objectKey": objectKey, "requestId": requestId}

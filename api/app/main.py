@@ -61,10 +61,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="NEXTDC IPAM (POC)",
+    title="IPAM - IP Address Management",
     version=API_VERSION,
     description=(
-        "Proof of concept for NEXTDC IP Address Management. Authenticate with `X-API-Key`. "
+        "IP Address Management API. Authenticate with `X-API-Key`. "
         "Send `X-Client-Name` so the audit log knows which tool called. "
         f"Engine {engine_version}."
     ),

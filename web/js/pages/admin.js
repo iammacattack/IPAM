@@ -104,7 +104,7 @@ export async function renderRoles(root) {
   const perms = Object.entries(r.permissions);
   mount(root,
     h('h1', {}, 'Roles'),
-    h('p', { class: 'page-sub' }, 'What each role can do. Roles are fixed in the POC; assign them to people on the Users page.'),
+    h('p', { class: 'page-sub' }, 'What each role can do. Roles are fixed; assign them to people on the Users page.'),
     card(null, h('div', { class: 'table-wrap' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Permission'), r.roles.map((x) => h('th', { class: 'num' }, x.name)))),
       h('tbody', {}, perms.map(([key, labelText]) => h('tr', {},

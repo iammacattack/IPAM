@@ -85,10 +85,10 @@ def ensure_bootstrap_key(conn, key: str) -> None:
     conn.execute(
         """
         INSERT INTO api_key (prefix, secret_hash, owner, purpose, client_name, scopes, expires_at, created_by)
-        VALUES (%s, %s, 'bootstrap (POC)', 'Local development key from .env (tests and scripts)', NULL, %s,
+        VALUES (%s, %s, 'bootstrap (development)', 'Local development key from .env (tests and scripts)', NULL, %s,
                 now() + interval '365 days', 'bootstrap')
-        ON CONFLICT (prefix) DO UPDATE SET scopes = EXCLUDED.scopes, created_by = 'bootstrap'
-            WHERE api_key.owner = 'bootstrap (POC)'
+        ON CONFLICT (prefix) DO UPDATE SET scopes = EXCLUDED.scopes, created_by = 'bootstrap', owner = EXCLUDED.owner
+            WHERE api_key.owner IN ('bootstrap (POC)', 'bootstrap (development)')
         """,
         (prefix, hash_secret(secret), ALL_SCOPES),
     )
