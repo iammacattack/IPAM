@@ -57,13 +57,13 @@ It's a small local server (spec §9). It runs on your workstation over stdio and
      claude mcp add --scope user ipam -- "C:\Users\Craig.McDonald\source\repos\nextdc-ipam\mcp\.venv\Scripts\ipam-mcp.exe"
      ```
 
-   - **Claude Desktop**: add this to `%APPDATA%\Claude\claude_desktop_config.json` under `mcpServers`, then restart Claude Desktop:
+   - **Claude Desktop**: run this from a normal PowerShell window, then quit Claude Desktop from the system tray (right-click the Claude icon, then **Quit**):
 
-     ```json
-     "ipam": {
-       "command": "C:\\Users\\Craig.McDonald\\source\\repos\\nextdc-ipam\\mcp\\.venv\\Scripts\\ipam-mcp.exe"
-     }
+     ```powershell
+     .\scripts\Register-IpamMcp.ps1
      ```
+
+     The script waits for Claude Desktop to close, backs up `%APPDATA%\Claude\claude_desktop_config.json`, adds `mcpServers.ipam` and reopens Claude. Don't edit that file while Claude Desktop is running: the app rewrites it from memory and drops changes made underneath it.
 
 IPAM has to be running (`docker compose up -d` in the repo root).
 
