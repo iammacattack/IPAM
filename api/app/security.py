@@ -32,7 +32,9 @@ PERMISSIONS: dict[str, str] = {
     "read": "View templates, sites, designs, lookups and the library",
     "templates.write": "Create and edit draft templates",
     "templates.release": "Release a template version",
-    "vlans.write": "Add VLANs to the library",
+    "vlans.write": "Add, change and delete VLANs in the library",
+    "hostroles.write": "Add, change and delete host pools and their members",
+    "pools.write": "Add, change and delete address pools, their prefixes and exclusions, and VRFs",
     "sites.deploy": "Reserve a site",
     "sites.confirm": "Confirm a site allocation",
     "sites.release": "Cancel a site reservation",
@@ -44,8 +46,8 @@ PERMISSIONS: dict[str, str] = {
 
 SYSTEM_ROLES: list[dict] = [
     {"key": "viewer", "name": "Viewer", "description": "Read-only: designs, lookups, library.", "permissions": ["read"]},
-    {"key": "designer", "name": "Designer", "description": "Curates templates and the VLAN library.",
-     "permissions": ["read", "templates.write", "templates.release", "vlans.write"]},
+    {"key": "designer", "name": "Designer", "description": "Curates templates, the VLAN library and host pools.",
+     "permissions": ["read", "templates.write", "templates.release", "vlans.write", "hostroles.write"]},
     {"key": "operator", "name": "Operator", "description": "Deploys sites and assigns host addresses.",
      "permissions": ["read", "sites.deploy", "sites.confirm", "sites.release", "hosts.assign"]},
     {"key": "auditor", "name": "Auditor", "description": "Reads and exports the audit log.", "permissions": ["read", "audit.read"]},
@@ -59,7 +61,7 @@ SCOPE_PERMISSIONS: dict[str, list[str]] = {
     "hosts:reserve": ["hosts.assign"],
     "hosts:write": ["hosts.assign"],
     "sites:deploy": ["sites.deploy", "sites.confirm", "sites.release"],
-    "templates:write": ["templates.write", "templates.release", "vlans.write"],
+    "templates:write": ["templates.write", "templates.release", "vlans.write", "hostroles.write"],
     "audit:read": ["audit.read"],  # e.g. a SIEM or reporting client
 }
 

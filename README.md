@@ -32,7 +32,7 @@ The UI has these pages:
 - **Template builder** (Workflow 1): sections, split all, split and merge rows, VLANs, bulk rule
 - **Sites** (Workflow 2): reserve, confirm, extend, release, design, host assignment
 - **Lookup tester** (Workflow 3): host IP, VLAN attributes, manifest tokens
-- **Library:** VLANs, host pools, address pools, VRFs
+- **Library:** VLANs, host pools (with a members editor), address pools (prefixes and exclusions) and VRFs, with full add / change / delete. A delete is refused while anything uses the item and the UI shows what; an in-use VLAN can be deprecated instead
 - **Governance:** audit log, users, roles, API keys (shown to roles that have them)
 - **My account:** password, 2FA, backup codes
 
@@ -56,10 +56,10 @@ This is the PAMdora model; Entra ID SSO is deferred.
   | Role | Permissions |
   |---|---|
   | Viewer | `read` |
-  | Designer | `read`, `templates.write`, `templates.release`, `vlans.write` |
+  | Designer | `read`, `templates.write`, `templates.release`, `vlans.write`, `hostroles.write` |
   | Operator | `read`, `sites.deploy`, `sites.confirm`, `sites.release`, `hosts.assign` |
   | Auditor | `read`, `audit.read` |
-  | Administrator | everything, including `users.manage` and `apikeys.manage` |
+  | Administrator | everything, including `pools.write` (address pools and VRFs), `users.manage` and `apikeys.manage` |
 
   The **Roles** page shows the grid.
 - **2FA.** TOTP (RFC 6238) with 10 single-use backup codes:
@@ -129,7 +129,7 @@ Invoke-RestMethod "$base/lookup/vlan?site=X9&vlan=VLAN_OT_SERVER&field=dnsServer
 |---|---|
 | Sign-in and account | `POST /auth/login`, `POST /auth/mfa/verify`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/change-password`, `POST /auth/mfa/enrol`, `POST /auth/mfa/enrol/verify`, `POST /auth/mfa/backup-codes` |
 | Administration | `GET/POST /users`, `PATCH /users/{u}`, `POST /users/{u}:reset-password`, `:reset-mfa`, `:unlock`, `GET /roles`, `GET/POST /api-keys`, `POST /api-keys/{prefix}:revoke` |
-| Design data | `GET /vrfs`, `GET /pools`, `GET /pools/{key}/next-free`, `GET/POST /vlans`, `GET /vlans/{keyOrAlias}`, `GET /host-roles` |
+| Library (MACD) | VLANs: `GET/POST /vlans`, `GET/PATCH/DELETE /vlans/{key}`, `GET /vlans/{key}/usage`. Host pools: `GET/POST /host-roles`, `PATCH/DELETE /host-roles/{code}`, `PUT /host-roles/{code}/members`. Pools: `GET/POST /pools`, `PATCH/DELETE /pools/{key}`, `POST/DELETE /pools/{key}/prefixes`, `POST/DELETE /pools/{key}/exclusions`, `GET /pools/{key}/next-free`. VRFs: `GET/POST /vrfs`, `PATCH/DELETE /vrfs/{key}`, `GET /vrfs/{key}/usage` |
 | Templates | `GET/POST /templates`, `GET /templates/{key}`, `POST /templates/{key}/versions`, `GET/PATCH /templates/{key}/versions/{v}`, `POST …/{v}:validate`, `POST …/{v}:release`, `GET …/{v}/placement`, `GET /templates/{key}/preview`, `POST /templates:layout` |
 | Sites | `POST /sites` (reserve; `?dryRun=true`; `Idempotency-Key`), `POST /sites/{code}:confirm`, `:extend`, `:release`, `GET /sites`, `GET /sites/{code}`, `GET /sites/{code}/design`, `GET /sites/{code}/vlans/{vlan}` |
 | Lookups | `GET /lookup/host-ip` (`resolve=assign`), `GET /lookup/vlan` (every §8.2.1 field plus `validateOctet`), `GET /lookup/network`, `POST /lookup:resolve-tokens` |
@@ -163,6 +163,12 @@ scripts/           Initialize-IpamEnv.ps1
 
 ## Decisions and deviations worth knowing
 
+- **Library guards.**
+  - A VLAN's key never changes, and its ID is frozen while a live site carries it.
+  - Host pools sharing a VLAN can't collide (spec §7), and a pool change that would leave a released template with placement conflicts is refused.
+  - A pool prefix with allocations can't be removed, and an exclusion can't cover allocated space.
+  - A non-private prefix needs explicit confirmation (spec §5.3).
+  - Changes never move addresses already held at sites (spec §5.6).
 - **Integrity is in the database.**
   - Site blocks can't overlap anywhere, because `EXCLUDE USING gist` enforces enterprise uniqueness.
   - Subnets can't overlap within a VRF.

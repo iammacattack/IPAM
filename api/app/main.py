@@ -23,7 +23,7 @@ from .audit import AuditMiddleware, system_event
 from .config import API_PREFIX, settings
 from .db import close_pool, open_pool, tx, wait_for_database
 from .errors import IpamError, engine_error_handler, ipam_error_handler, problem
-from .routers import admin, auth_routes, design, governance, lookups, sites
+from .routers import admin, auth_routes, design, governance, library, lookups, sites
 from .services import sites as ssvc
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -96,7 +96,7 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
     return problem(request, 422, "IPAM-REQUEST-INVALID", "Request didn't match the schema", {"errors": exc.errors()})
 
 
-for r in (auth_routes.router, admin.router, design.router, sites.router, lookups.router, governance.router):
+for r in (auth_routes.router, admin.router, design.router, library.router, sites.router, lookups.router, governance.router):
     app.include_router(r, prefix=API_PREFIX)
 
 
