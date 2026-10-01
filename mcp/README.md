@@ -40,11 +40,13 @@ It's a small local server (spec §9). It runs on your workstation over stdio and
    - Client name: `ClaudeCowork-MCP`.
    - Scope: **read only**.
 
-3. **Store the key** in Windows Credential Manager, so it's never written into a config file:
+3. **Store the key** in Windows Credential Manager, so it's never written into a config file. Copy the key (the **Copy key** button when it's issued), then:
 
    ```powershell
-   .\.venv\Scripts\ipam-mcp-setkey
+   Get-Clipboard | .\.venv\Scripts\ipam-mcp-setkey
    ```
+
+   Don't paste the key at the PowerShell prompt itself: it would end up in your shell history.
 
    Paste the key when asked. It checks the key against IPAM before storing it.
 
