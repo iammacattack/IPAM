@@ -78,6 +78,7 @@ const ACTION_LABELS = {
   'templates.release': 'release a template',
   'sites.confirm': 'confirm a site allocation',
   'sites.release': 'release a site reservation',
+  'sites.retire': 'retire or purge a site',
   'users.manage': 'change users',
   'apikeys.manage': 'issue or revoke API keys',
   'mfa.replace': 'change your 2FA set-up',

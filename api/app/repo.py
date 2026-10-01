@@ -23,6 +23,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "mfaRequiredForRoles": ["admin"],
     "stepUpActions": ["templates.release", "sites.confirm", "sites.release", "users.manage", "apikeys.manage", "mfa.replace"],
     "stepUpWindowMinutes": 5,
+    "retireQuarantineDays": 90,
 }
 
 

@@ -36,6 +36,8 @@ CSRF_HEADER = "x-requested-with"
 CSRF_VALUE = "IPAM-UI"
 STEP_UP_HEADER = "x-ipam-2fa"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# Destructive actions always need a fresh code, whatever the stepUpActions setting says.
+ALWAYS_STEP_UP = {"sites.retire"}
 
 # Declared so Swagger UI shows an Authorize button; authenticate() reads the header itself.
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False, description="API key for scripts and integrations")
@@ -252,7 +254,7 @@ def require_step_up(request: Request, principal: Principal, action: str) -> None
         return
     with autocommit() as conn:
         cfg = repo.settings(conn)
-        if action not in set(cfg.get("stepUpActions") or []):
+        if action not in ALWAYS_STEP_UP and action not in set(cfg.get("stepUpActions") or []):
             return
         window = timedelta(minutes=max(0, int(cfg["stepUpWindowMinutes"])))
         now = datetime.now(timezone.utc)

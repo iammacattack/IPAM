@@ -30,7 +30,7 @@ The UI has these pages:
 - **Dashboard**
 - **Templates:** versions, layout, host placement, validation, preview and release
 - **Template builder** (Workflow 1): sections, split all, split and merge rows, VLANs, bulk rule
-- **Sites** (Workflow 2): reserve, confirm, extend, release, design, host assignment
+- **Sites** (Workflow 2): reserve, confirm, extend, release, design, host assignment, **retire** (delete) and **purge**
 - **Lookup tester** (Workflow 3): host IP, VLAN attributes, manifest tokens
 - **Library:** VLANs, host pools (with a members editor), address pools (prefixes and exclusions) and VRFs, with full add / change / delete. A delete is refused while anything uses the item and the UI shows what; an in-use VLAN can be deprecated instead
 - **Governance:** audit log, users, roles, API keys (shown to roles that have them)
@@ -85,17 +85,16 @@ This is the PAMdora model; Entra ID SSO is deferred.
 ## Tests
 
 ```powershell
-docker compose --profile test run --rm --build tests
+.\scripts\Test-Ipam.ps1
 ```
 
-That runs the engine unit tests and the end-to-end suite inside the Compose network, against the running API. There are 73 tests:
+That runs the engine unit tests and the end-to-end suite against a **separate test API and an in-memory database** (`api-test`, `db-test`), then removes them. Your real sites, pools and users are never touched. There are 73 tests:
 
 - engine unit tests;
 - Workflows 1, 2, 3 and 3a;
 - ADR tests T1, T2, T3 and T6;
 - sign-in, lockout, 2FA, step-up, CSRF, and user and key administration.
 
-**The end-to-end suite clears all site allocations first** (sites, blocks, subnets, IP records, the site-code registry), so that Workflow 2's `X9` deploy is repeatable. It also removes its own `pt-*` test users and `WF1-*` templates. Real users, other templates, the VLAN library and the audit log are kept. Don't run it against sites you want to keep.
 
 The engine tests also run locally without Docker:
 
@@ -131,7 +130,7 @@ Invoke-RestMethod "$base/lookup/vlan?site=X9&vlan=VLAN_OT_SERVER&field=dnsServer
 | Administration | `GET/POST /users`, `PATCH /users/{u}`, `POST /users/{u}:reset-password`, `:reset-mfa`, `:unlock`, `GET /roles`, `GET/POST /api-keys`, `POST /api-keys/{prefix}:revoke` |
 | Library (MACD) | VLANs: `GET/POST /vlans`, `GET/PATCH/DELETE /vlans/{key}`, `GET /vlans/{key}/usage`. Host pools: `GET/POST /host-roles`, `PATCH/DELETE /host-roles/{code}`, `PUT /host-roles/{code}/members`. Pools: `GET/POST /pools`, `PATCH/DELETE /pools/{key}`, `POST/DELETE /pools/{key}/prefixes`, `POST/DELETE /pools/{key}/exclusions`, `GET /pools/{key}/next-free`. VRFs: `GET/POST /vrfs`, `PATCH/DELETE /vrfs/{key}`, `GET /vrfs/{key}/usage` |
 | Templates | `GET/POST /templates`, `GET /templates/{key}`, `POST /templates/{key}/versions`, `GET/PATCH /templates/{key}/versions/{v}`, `POST …/{v}:validate`, `POST …/{v}:release`, `GET …/{v}/placement`, `GET /templates/{key}/preview`, `POST /templates:layout` |
-| Sites | `POST /sites` (reserve; `?dryRun=true`; `Idempotency-Key`), `POST /sites/{code}:confirm`, `:extend`, `:release`, `GET /sites`, `GET /sites/{code}`, `GET /sites/{code}/design`, `GET /sites/{code}/vlans/{vlan}` |
+| Sites | `POST /sites` (reserve; `?dryRun=true`; `Idempotency-Key`), `POST /sites/{code}:confirm`, `:extend`, `:release`, `:retire`, `:purge`, `DELETE /sites/{code}` (spec form), `GET /sites`, `GET /sites/{code}`, `GET /sites/{code}/design`, `GET /sites/{code}/vlans/{vlan}` |
 | Lookups | `GET /lookup/host-ip` (`resolve=assign`), `GET /lookup/vlan` (every §8.2.1 field plus `validateOctet`), `GET /lookup/network`, `POST /lookup:resolve-tokens` |
 | Governance | `GET /audit`, `GET /site-codes`, `GET /healthz`, `GET /readyz` |
 
@@ -141,7 +140,7 @@ These are deferred to later phases:
 - Entra ID SSO (now after local users; see the POC scope);
 - the hash-chained audit and SIEM forwarding;
 - the `TESTING` state and two-person release;
-- site retire and drift detection;
+- drift detection;
 - the legacy import;
 - the MCP server and PowerShell module;
 - high availability.
@@ -163,6 +162,12 @@ scripts/           Initialize-IpamEnv.ps1
 
 ## Decisions and deviations worth knowing
 
+- **Deleting a site.**
+  - **Release** cancels a reservation, and the space returns at once.
+  - **Retire** deletes a confirmed site: the site code is freed at once, and the address space is quarantined for `retireQuarantineDays` (90 days by default) before returning to the pool on its own.
+  - **Purge** removes a retired site's record. Inside the quarantine, purging needs a reason and releases the space early.
+  - Retiring is refused while hosts are assigned, unless forced.
+  - Retire and purge are Administrator-only, always ask for a fresh 2FA code, and are never available to API keys (spec Q8).
 - **Library guards.**
   - A VLAN's key never changes, and its ID is frozen while a live site carries it.
   - Host pools sharing a VLAN can't collide (spec §7), and a pool change that would leave a released template with placement conflicts is refused.

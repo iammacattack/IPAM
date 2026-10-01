@@ -210,7 +210,7 @@ def _overlap_detail(conn, cidr: IPv4Network) -> dict[str, Any]:
 
 def deploy(
     conn, body: dict[str, Any], actor: str, client_name: str | None, idem_key: str | None, dry_run: bool
-) -> tuple[dict[str, Any], bool, list[str]]:
+) -> tuple[dict[str, Any], bool, dict[str, list[str]]]:
     """Returns (site design, created, site codes expired on the way).
 
     created=False means a dry run or an idempotent replay of an earlier request.
@@ -222,9 +222,9 @@ def deploy(
     if idem_key and not dry_run:
         prior = conn.execute("SELECT * FROM site WHERE idempotency_key = %s", (idem_key,)).fetchone()
         if prior:
-            return design(conn, prior), False, []
+            return design(conn, prior), False, {}
 
-    expired = expire_due(conn)
+    expired = sweep(conn)
 
     tpl = tsvc.released_version(conn, str(body.get("templateKey") or ""), body.get("templateVersion"))
     layout = layout_from_content(tpl["content"])
@@ -368,12 +368,82 @@ def extend(conn, code: str, days: int, actor: str) -> dict[str, Any]:
     ).fetchone()
 
 
+def sweep(conn) -> dict[str, list[str]]:
+    """Lapsed reservations and ended quarantines both return space to the pool. Returns site codes per event."""
+    return {"site.reservation_expired": expire_due(conn), "site.quarantine_ended": release_quarantined(conn)}
+
+
+def release_quarantined(conn) -> list[str]:
+    """Retired sites whose quarantine has ended give their address space back to the pool."""
+    rows = conn.execute(
+        """SELECT site_id, site_code FROM site WHERE status = 'retired' AND space_released_at IS NULL
+           AND quarantine_until <= now() FOR UPDATE SKIP LOCKED"""
+    ).fetchall()
+    for r in rows:
+        conn.execute("DELETE FROM block WHERE site_id = %s", (r["site_id"],))
+        conn.execute("UPDATE site SET space_released_at = now() WHERE site_id = %s", (r["site_id"],))
+    return [r["site_code"] for r in rows]
+
+
+def retire(conn, code: str, reason: str | None, change_ref: str | None, force: bool, actor: str) -> dict[str, Any]:
+    """FR-14: retire a confirmed site. The code is freed now; the space is quarantined, then returns to the pool."""
+    if not (reason or "").strip() or len(reason.strip()) < 3:
+        raise IpamError("IPAM-REASON-REQUIRED", "Say why the site is being retired")
+    site = repo.live_site(conn, code, for_update=True)
+    if site["status"] == "reserved":
+        raise IpamError("IPAM-SITE-STATE", f"{site['site_code']} is only reserved; release the reservation instead (nothing to quarantine)")
+    assigned = conn.execute(
+        "SELECT hostname, ip FROM ip_record WHERE site_id = %s AND status = 'assigned' ORDER BY ip", (site["site_id"],)
+    ).fetchall()
+    if assigned and not force:
+        raise IpamError(
+            "IPAM-SITE-HAS-ASSIGNMENTS",
+            f"{site['site_code']} still has {len(assigned)} host(s) assigned to machines. Decommission them, or retire anyway.",
+            status=409,
+            assignments=[f"{a['hostname']} {str(a['ip']).split('/')[0]}" for a in assigned],
+        )
+    days = int(repo.settings(conn)["retireQuarantineDays"])
+    site = conn.execute(
+        """UPDATE site SET status = 'retired', ended_at = now(), retired_at = now(), retired_by = %s, retire_reason = %s,
+               change_ref = %s, quarantine_until = now() + make_interval(days => %s) WHERE site_id = %s RETURNING *""",
+        (actor, reason.strip(), change_ref, days, site["site_id"]),
+    ).fetchone()
+    if days <= 0:
+        release_quarantined(conn)
+        site = conn.execute("SELECT * FROM site WHERE site_id = %s", (site["site_id"],)).fetchone()
+    return site
+
+
+def purge(conn, code: str, release_now: bool, reason: str | None, actor: str) -> dict[str, Any]:
+    """Remove a retired site's record. Before the quarantine ends this needs releaseNow and a reason."""
+    code = code.upper()
+    if conn.execute("SELECT 1 FROM site WHERE site_code = %s AND status = ANY(%s)", (code, list(LIVE_SITE_STATUSES))).fetchone():
+        raise IpamError("IPAM-SITE-STATE", f"{code} is live; retire it first")
+    site = conn.execute(
+        "SELECT * FROM site WHERE site_code = %s AND status = 'retired' ORDER BY retired_at DESC LIMIT 1 FOR UPDATE", (code,)
+    ).fetchone()
+    if site is None:
+        raise IpamError("IPAM-SITE-NOT-FOUND", f"No retired site {code}", status=404)
+    in_quarantine = site["space_released_at"] is None and site["quarantine_until"] > datetime.now(timezone.utc)
+    if in_quarantine and not release_now:
+        raise IpamError(
+            "IPAM-SITE-QUARANTINED",
+            f"{code}'s address space is quarantined until {site['quarantine_until']:%d %b %Y}. Purging now releases it early; say why and confirm.",
+            status=409, quarantineUntil=site["quarantine_until"].isoformat(),
+        )
+    if in_quarantine and len((reason or "").strip()) < 3:
+        raise IpamError("IPAM-REASON-REQUIRED", "Say why the space is being released before the quarantine ends")
+    before = summary(conn, site)
+    conn.execute("DELETE FROM site WHERE site_id = %s", (site["site_id"],))
+    return before
+
+
 def release(conn, code: str, actor: str) -> dict[str, Any]:
     site = repo.live_site(conn, code, for_update=True)
     if site["status"] != "reserved":
         raise IpamError(
             "IPAM-SITE-STATE",
-            f"Site {code} is {site['status']}; only a reservation can be released (retire is a later phase)",
+            f"Site {code} is {site['status']}; only a reservation can be released. Retire a confirmed site instead.",
         )
     conn.execute("DELETE FROM block WHERE site_id = %s", (site["site_id"],))
     return conn.execute(
@@ -410,6 +480,11 @@ def summary(conn, site: dict[str, Any]) -> dict[str, Any]:
     }
     if site["status"] == "reserved":
         out["reservation"] = {"reservationId": str(site["reservation_id"]), "expiresAt": site["expires_at"], "reservedBy": site["reserved_by"]}
+    if site["status"] == "retired":
+        out["retirement"] = {
+            "retiredAt": site["retired_at"], "retiredBy": site["retired_by"], "reason": site["retire_reason"],
+            "changeRef": site["change_ref"], "quarantineUntil": site["quarantine_until"], "spaceReleasedAt": site["space_released_at"],
+        }
     code_row = conn.execute("SELECT status, non_standard FROM site_code WHERE code = %s", (site["site_code"],)).fetchone()
     if code_row:
         out["siteCodeStatus"] = code_row["status"]

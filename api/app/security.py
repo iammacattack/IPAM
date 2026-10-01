@@ -39,6 +39,7 @@ PERMISSIONS: dict[str, str] = {
     "sites.confirm": "Confirm a site allocation",
     "sites.release": "Cancel a site reservation",
     "hosts.assign": "Assign a host address to a machine",
+    "sites.retire": "Retire (delete) a confirmed site and purge retired sites",
     "audit.read": "View and export the audit log",
     "users.manage": "Add, change and disable users; reset passwords and 2FA",
     "apikeys.manage": "Issue and revoke API keys",

@@ -37,9 +37,10 @@ def _sweeper(stop: threading.Event) -> None:
     while not stop.wait(settings.expiry_sweep_seconds):
         try:
             with tx() as conn:
-                expired = ssvc.expire_due(conn)
-            for code in expired:
-                system_event("site.reservation_expired", objectType="site", objectKey=code, siteCode=code)
+                events = ssvc.sweep(conn)
+            for action, codes in events.items():
+                for code in codes:
+                    system_event(action, objectType="site", objectKey=code, siteCode=code)
         except Exception:  # noqa: BLE001
             log.exception("reservation sweep failed")
 

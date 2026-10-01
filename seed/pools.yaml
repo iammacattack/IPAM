@@ -48,3 +48,5 @@ settings:
   # High-risk actions that need a fresh 2FA code; one code covers stepUpWindowMinutes (0 = every time)
   stepUpActions: [templates.release, sites.confirm, sites.release, users.manage, apikeys.manage, mfa.replace]
   stepUpWindowMinutes: 5
+  # Retired sites hold their address space this long before it returns to the pool (spec §16.3)
+  retireQuarantineDays: 90

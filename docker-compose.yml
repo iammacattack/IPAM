@@ -1,6 +1,6 @@
-# NEXTDC IPAM POC. Localhost only: nothing is published beyond 127.0.0.1.
+# IPAM - IP Address Management. Localhost only: nothing is published beyond 127.0.0.1.
 #   docker compose up --build -d                                    # run
-#   docker compose --profile test run --rm --build tests             # engine + end-to-end tests
+#   .\scripts\Test-Ipam.ps1                                         # tests, in their own throwaway database
 # Secrets come from .env (create it with scripts/Initialize-IpamEnv.ps1).
 name: nextdc-ipam
 
@@ -40,19 +40,49 @@ services:
       - "127.0.0.1:${IPAM_PORT:-8820}:8000"
     restart: unless-stopped
 
+  # ---- Test profile: its own API and a throwaway in-memory database. Never touches the real data. ----
+  db-test:
+    profiles: ["test"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ipam
+      POSTGRES_USER: ipam
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ipam -d ipam"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api-test:
+    profiles: ["test"]
+    build:
+      context: .
+      target: app
+    environment:
+      DATABASE_URL: postgresql://ipam:${POSTGRES_PASSWORD}@db-test:5432/ipam
+      IPAM_BOOTSTRAP_API_KEY: ${IPAM_BOOTSTRAP_API_KEY}
+      IPAM_SECRET_KEY: ${IPAM_SECRET_KEY}
+      IPAM_ADMIN_PASSWORD: ""
+    depends_on:
+      db-test:
+        condition: service_healthy
+
   tests:
     profiles: ["test"]
     build:
       context: .
       target: test
     environment:
-      IPAM_BASE_URL: http://api:8000/api/v1
+      IPAM_BASE_URL: http://api-test:8000/api/v1
       IPAM_API_KEY: ${IPAM_BOOTSTRAP_API_KEY}
-      DATABASE_URL: postgresql://ipam:${POSTGRES_PASSWORD}@db:5432/ipam
-      # The end-to-end suite clears site allocations before it runs so the reference workflows are repeatable.
+      DATABASE_URL: postgresql://ipam:${POSTGRES_PASSWORD}@db-test:5432/ipam
+      # Safe: this resets the throwaway test database only.
       IPAM_TEST_RESET: "1"
     depends_on:
-      api:
+      api-test:
         condition: service_healthy
 
 volumes:

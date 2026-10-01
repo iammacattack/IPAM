@@ -31,7 +31,7 @@ export async function renderList(root, active = 'live') {
       { label: 'Requested by', value: (s) => s.clientName || '' },
       { label: 'Created', value: (s) => fmtTime(s.createdAt) },
     ], sites, {
-      onRowClick: (s) => { if (s.blocks.length || ['reserved', 'allocated', 'active'].includes(s.status)) location.hash = `#/sites/${encodeURIComponent(s.siteCode)}`; },
+      onRowClick: (s) => { if (s.blocks.length || ['reserved', 'allocated', 'active', 'retired'].includes(s.status)) location.hash = `#/sites/${encodeURIComponent(s.siteCode)}`; },
       empty: 'No sites here yet.',
     })));
 }
@@ -131,6 +131,12 @@ export async function renderDetail(root, code) {
       try { await post(`/sites/${encodeURIComponent(code)}:release`); toast(`${d.siteCode} released`, 'success'); location.hash = '#/sites'; } catch (err) { modal({ title: 'Couldn\'t release', body: errorPanel(err) }); }
     }, 'danger'));
   }
+  if (confirmed && can('sites.retire')) {
+    actions.push(button('Retire site…', () => retireDialog(d, reload), 'danger'));
+  }
+  if (d.status === 'retired' && can('sites.retire')) {
+    actions.push(button('Purge…', () => purgeDialog(d), 'danger'));
+  }
   actions.push(button('Refresh', reload));
 
   const facts = [
@@ -142,6 +148,10 @@ export async function renderDetail(root, code) {
     ['Created', `${fmtTime(d.createdAt)}${d.clientName ? ' · via ' + d.clientName : ''}`],
     d.confirmedAt ? ['Confirmed', fmtTime(d.confirmedAt)] : null,
     d.endedAt ? ['Ended', fmtTime(d.endedAt)] : null,
+    d.retirement ? ['Retired', h('span', {}, `${fmtTime(d.retirement.retiredAt)} by ${d.retirement.retiredBy} — "${d.retirement.reason}"`, d.retirement.changeRef ? ` (${d.retirement.changeRef})` : '')] : null,
+    d.retirement ? ['Address space', d.retirement.spaceReleasedAt
+      ? `returned to the pool ${fmtTime(d.retirement.spaceReleasedAt)}`
+      : h('span', {}, 'quarantined until ', h('strong', {}, fmtTime(d.retirement.quarantineUntil)), ` (${fromNow(d.retirement.quarantineUntil)}), then returned to the pool`)] : null,
   ].filter(Boolean);
 
   mount(root,
@@ -197,6 +207,68 @@ function networkRows(d, n, confirmed, reload) {
     { label: '', value: (x) => (x.status === 'reserved-pattern' && can('hosts.assign') ? button('Assign…', () => assign(d, n, x, reload), 'small', { disabled: !confirmed, title: confirmed ? 'Claim this address for a machine' : 'Confirm the site first' }) : '') },
   ], n.hosts)));
   return [main, hostRows];
+}
+
+async function retireDialog(d, reload) {
+  const reason = input({ class: 'wide', placeholder: 'e.g. Site decommissioned; customer exit' });
+  const change = input({ class: 'mono', placeholder: 'e.g. CHG0012345' });
+  const force = h('input', { type: 'checkbox' });
+  const confirmCode = input({ class: 'mono narrow', placeholder: d.siteCode });
+  const out = h('div');
+  const assigned = d.networks.flatMap((n) => (n.hosts || []).filter((x) => x.status === 'assigned'));
+  const ok = await modal({
+    title: `Retire ${d.siteCode}`,
+    body: h('div', {},
+      h('p', {}, 'Retiring deletes the site. Straight away its code is free to reuse and it stops answering lookups. Its address space (', d.blocks.map((b) => h('code', {}, b.cidr)),
+        ') is ', h('strong', {}, 'quarantined'), ' first, so addresses still in DNS, firewall rules or device configs aren\'t handed to a new site; after that it returns to the pool on its own.'),
+      assigned.length ? h('div', { class: 'alert alert-warn compact' }, `${assigned.length} host(s) are still assigned to machines: ${assigned.slice(0, 6).map((x) => x.hostname).join(', ')}${assigned.length > 6 ? '…' : ''}.`) : null,
+      h('div', { class: 'form-grid' }, field('Reason', reason, 'Recorded in the audit log'), field('Change reference', change, 'Optional')),
+      assigned.length ? h('label', { class: 'check' }, force, ' Retire anyway; those machines are being decommissioned too') : null,
+      field(`Type ${d.siteCode} to confirm`, confirmCode),
+      h('p', { class: 'muted small' }, 'You\'ll be asked for a code from your authenticator app.'),
+      out),
+    actions: [{ label: 'Cancel', value: false }, {
+      label: 'Retire site', kind: 'danger', value: true,
+      validate: async () => {
+        if (confirmCode.value.trim().toUpperCase() !== d.siteCode) { mount(out, h('div', { class: 'alert alert-error compact' }, `Type ${d.siteCode} to confirm`)); return false; }
+        try {
+          await post(`/sites/${encodeURIComponent(d.siteCode)}:retire`, { reason: reason.value.trim(), changeRef: change.value.trim() || null, force: force.checked });
+          return true;
+        } catch (err) { mount(out, errorPanel(err)); return false; }
+      },
+    }],
+  });
+  if (ok) { toast(`${d.siteCode} retired`, 'success'); reload(); }
+}
+
+async function purgeDialog(d) {
+  const r = d.retirement;
+  const early = !r.spaceReleasedAt && new Date(r.quarantineUntil) > new Date();
+  const reason = input({ class: 'wide', placeholder: 'e.g. Test site created by mistake' });
+  const confirmCode = input({ class: 'mono narrow', placeholder: d.siteCode });
+  const out = h('div');
+  const ok = await modal({
+    title: `Purge ${d.siteCode}`,
+    body: h('div', {},
+      h('p', {}, 'Purging removes the retired site\'s record for good. The audit trail is kept.'),
+      early ? h('div', { class: 'alert alert-warn' },
+        h('strong', {}, 'Its address space is still quarantined'), ` until ${fmtTime(r.quarantineUntil)}. Purging now returns `, d.blocks.map((b) => h('code', {}, b.cidr)),
+        ' to the pool straight away, so it could be handed to a new site while old DNS records or firewall rules still point at it. Only do this for test sites or mistakes.') : null,
+      early ? field('Why release it early?', reason, 'Required; recorded in the audit log') : null,
+      field(`Type ${d.siteCode} to confirm`, confirmCode),
+      out),
+    actions: [{ label: 'Cancel', value: false }, {
+      label: early ? 'Purge and release now' : 'Purge', kind: 'danger', value: true,
+      validate: async () => {
+        if (confirmCode.value.trim().toUpperCase() !== d.siteCode) { mount(out, h('div', { class: 'alert alert-error compact' }, `Type ${d.siteCode} to confirm`)); return false; }
+        try {
+          await post(`/sites/${encodeURIComponent(d.siteCode)}:purge`, { releaseNow: early, reason: early ? reason.value.trim() : null });
+          return true;
+        } catch (err) { mount(out, errorPanel(err)); return false; }
+      },
+    }],
+  });
+  if (ok) { toast(`${d.siteCode} purged`, 'success'); location.hash = '#/sites'; }
 }
 
 async function assign(d, n, x, reload) {

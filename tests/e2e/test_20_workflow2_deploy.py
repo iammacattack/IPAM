@@ -98,6 +98,9 @@ def test_confirm_makes_it_permanent(sdw, x9):
     assert "reservation" not in r.json()
     # a confirmed site can't be released (retire is a later phase)
     assert sdw.post("/sites/X9:release").json()["code"] == "IPAM-SITE-STATE"
+    # and API keys can never retire (delete) a site - that needs an Administrator with 2FA (spec §10.4, Q8)
+    r = sdw.post("/sites/X9:retire", json={"reason": "test"})
+    assert r.status_code == 403 and r.json()["code"] == "IPAM-PERMISSION-DENIED"
 
 
 def test_release_returns_space_immediately(sdw):

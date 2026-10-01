@@ -54,9 +54,10 @@ class ExtendIn(BaseModel):
     days: int = Field(ge=1)
 
 
-def _emit_expired(codes: list[str]) -> None:
-    for code in codes:
-        system_event("site.reservation_expired", objectType="site", objectKey=code, siteCode=code)
+def _emit_expired(events: dict[str, list[str]]) -> None:
+    for action, codes in events.items():
+        for code in codes:
+            system_event(action, objectType="site", objectKey=code, siteCode=code)
 
 
 @router.post("/sites", status_code=201)
@@ -119,6 +120,63 @@ def release_site(request: Request, site_code: str, principal: Principal = Depend
         return ssvc.summary(conn, site)
 
 
+class RetireIn(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"reason": "Site decommissioned", "changeRef": "CHG0012345", "force": False}]})
+    reason: str = Field(description="Why the site is being retired (audited)")
+    changeRef: str | None = None
+    force: bool = Field(False, description="Retire even though hosts are still assigned to machines")
+
+
+class PurgeIn(BaseModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"releaseNow": False, "reason": None}]})
+    releaseNow: bool = Field(False, description="Purge before the quarantine ends and return the space at once")
+    reason: str | None = Field(None, description="Required with releaseNow")
+
+
+@router.post("/sites/{site_code}:retire")
+def retire_site(request: Request, site_code: str, body: RetireIn, principal: Principal = Depends(require("sites.retire", step_up="sites.retire"))):
+    """FR-14: retire (delete) a confirmed site. The site code is freed at once; the address space is quarantined
+    (default 90 days) so addresses still in DNS or firewall rules aren't reissued, then returns to the pool."""
+    code = site_code.upper()
+    note(request, "site.retire", objectType="site", objectKey=code, siteCode=code)
+    with tx() as conn:
+        site = ssvc.retire(conn, code, body.reason, body.changeRef, body.force, principal.actor_id)
+        out = ssvc.summary(conn, site)
+    request.state.audit["changes"] = {"status": {"to": "retired"}, "reason": body.reason, "changeRef": body.changeRef, "force": body.force,
+                                      "quarantineUntil": out["retirement"]["quarantineUntil"].isoformat()}
+    return out
+
+
+@router.post("/sites/{site_code}:purge")
+def purge_site(request: Request, site_code: str, body: PurgeIn, principal: Principal = Depends(require("sites.retire", step_up="sites.retire"))):
+    """Remove a retired site's record. Before its quarantine ends this needs releaseNow and a reason;
+    the space then returns to the pool immediately. The audit trail is kept."""
+    code = site_code.upper()
+    note(request, "site.purge", objectType="site", objectKey=code, siteCode=code)
+    with tx() as conn:
+        before = ssvc.purge(conn, code, body.releaseNow, body.reason, principal.actor_id)
+    request.state.audit["changes"] = {"before": {"blocks": before["blocks"], "template": before["template"]},
+                                      "releaseNow": body.releaseNow, "reason": body.reason}
+    return {"purged": code, "blocksReleased": [b["cidr"] for b in before["blocks"]]}
+
+
+@router.delete("/sites/{site_code}")
+def delete_site(
+    request: Request,
+    site_code: str,
+    reason: str | None = None,
+    changeRef: str | None = None,
+    force: bool = False,
+    purge: bool = False,
+    releaseNow: bool = False,
+    principal: Principal = Depends(require("sites.retire", step_up="sites.retire")),
+):
+    """Spec §8.2 form: DELETE retires; `?purge=true` purges a retired site."""
+    if purge:
+        return purge_site(request, site_code, PurgeIn(releaseNow=releaseNow, reason=reason), principal)
+    return retire_site(request, site_code, RetireIn(reason=reason or "", changeRef=changeRef, force=force), principal)
+
+
 @router.get("/sites")
 def list_sites(
     request: Request,
@@ -128,7 +186,7 @@ def list_sites(
 ):
     note(request, "site.list")
     with tx() as conn:
-        _emit_expired(ssvc.expire_due(conn))
+        _emit_expired(ssvc.sweep(conn))
         sql, params = "SELECT * FROM site WHERE true", []
         if status:
             sql += " AND status = ANY(%s)"
@@ -148,7 +206,7 @@ def get_site(request: Request, site_code: str, _: Principal = Depends(require("r
     code = site_code.upper()
     note(request, "site.read", objectType="site", objectKey=code, siteCode=code)
     with tx() as conn:
-        _emit_expired(ssvc.expire_due(conn))
+        _emit_expired(ssvc.sweep(conn))
         return ssvc.summary(conn, repo.latest_site(conn, code))
 
 
@@ -165,7 +223,7 @@ def get_design(
     code = site_code.upper()
     note(request, "design.read", objectType="site", objectKey=code, siteCode=code)
     with tx() as conn:
-        _emit_expired(ssvc.expire_due(conn))
+        _emit_expired(ssvc.sweep(conn))
         site = repo.latest_site(conn, code)
         vk = repo.resolve_vlan_key(conn, vlanKey) if vlanKey else None
         return ssvc.design(conn, site, section=section, vlan_key=vk, include_hosts=(include or "") != "none")
