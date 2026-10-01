@@ -503,6 +503,45 @@ def _pool_view(conn, key: str) -> dict[str, Any]:
     }
 
 
+def _exclusions(conn, key: str) -> list:
+    return [ip_network(r["cidr"]) for r in conn.execute("SELECT cidr FROM pool_exclusion WHERE pool_key = %s", (key,))]
+
+
+def _uncovered(space, holes) -> list:
+    """The parts of ``space`` not covered by any of ``holes``."""
+    remaining = [space]
+    for hole in holes:
+        nxt = []
+        for r in remaining:
+            if r.subnet_of(hole):
+                continue
+            if hole.subnet_of(r):
+                nxt.extend(r.address_exclude(hole))
+            else:
+                nxt.append(r)
+        remaining = nxt
+    return remaining
+
+
+def _sibling_clash(conn, parent: str, key: str, net) -> tuple[str, Any, Any] | None:
+    """Allocation pools under one parent can't overlap each other (spec §5.3) - except where the overlapping
+    space is excluded from one of them, which is how a range is carved out of one pool for another.
+    Returns (sibling, its prefix, first un-excluded gap) or None."""
+    own = _exclusions(conn, key)
+    for r in conn.execute(
+        """SELECT p.pool_key, pp.cidr FROM pool p JOIN pool_prefix pp USING (pool_key)
+           WHERE p.parent_key = %s AND p.pool_key <> %s ORDER BY p.pool_key, pp.position""",
+        (parent, key),
+    ).fetchall():
+        other = ip_network(r["cidr"])
+        if net.overlaps(other):
+            shared = net if net.subnet_of(other) else other
+            gaps = _uncovered(shared, own + _exclusions(conn, r["pool_key"]))
+            if gaps:
+                return r["pool_key"], other, gaps[0]
+    return None
+
+
 def _add_prefix(conn, key: str, raw: str, confirm: bool) -> str:
     net = _cidr(raw)
     if not any(net.subnet_of(p) for p in PRIVATE) and not confirm:
@@ -514,13 +553,15 @@ def _add_prefix(conn, key: str, raw: str, confirm: bool) -> str:
         if not any(net.subnet_of(p) for p in parent):
             raise IpamError("IPAM-PREFIX-OUTSIDE-PARENT", f"{net} isn't inside parent pool {pool['parent_key']} ({', '.join(map(str, parent)) or 'no prefixes'})",
                             status=422)
-        # Allocation pools under one parent can't overlap each other (spec §5.3).
-        for r in conn.execute(
-            """SELECT p.pool_key, pp.cidr FROM pool p JOIN pool_prefix pp USING (pool_key)
-               WHERE p.parent_key = %s AND p.pool_key <> %s""", (pool["parent_key"], key)
-        ).fetchall():
-            if net.overlaps(ip_network(r["cidr"])):
-                raise IpamError("IPAM-POOL-OVERLAP", f"{net} overlaps {r['cidr']} in sibling pool {r['pool_key']}", status=409)
+        clash = _sibling_clash(conn, pool["parent_key"], key, net)
+        if clash:
+            sibling, prefix, gap = clash
+            raise IpamError(
+                "IPAM-POOL-OVERLAP",
+                f"{net} overlaps {prefix} in sibling pool {sibling}, and {gap} of that overlap isn't excluded from either pool. "
+                f"Exclude it from {sibling} first (or from this pool).",
+                status=409, sibling=sibling, overlapsWith=str(prefix), notExcluded=str(gap),
+            )
     if conn.execute("SELECT 1 FROM pool_prefix WHERE pool_key = %s AND cidr = %s", (key, str(net))).fetchone():
         raise IpamError("IPAM-PREFIX-EXISTS", f"{net} is already a prefix of {key}", status=409)
     pos = conn.execute("SELECT coalesce(max(position), -1) + 1 AS p FROM pool_prefix WHERE pool_key = %s", (key,)).fetchone()["p"]
@@ -563,10 +604,11 @@ def create_pool(request: Request, body: PoolIn, _: Principal = Depends(require("
                 )
         except pg_errors.UniqueViolation as exc:
             raise IpamError("IPAM-POOL-EXISTS", f"Pool {key} already exists", status=409) from exc
-        for c in body.prefixes:
-            _add_prefix(conn, key, c, body.confirmNonPrivate)
+        # Exclusions first, so the sibling-overlap check on each prefix already knows about them.
         for c in body.exclusions:
             _add_exclusion(conn, key, c)
+        for c in body.prefixes:
+            _add_prefix(conn, key, c, body.confirmNonPrivate)
         view = _pool_view(conn, key)
     request.state.audit["changes"] = {"after": view}
     return view
@@ -650,8 +692,20 @@ def remove_pool_exclusion(request: Request, key: str, cidr: str = Query(...), _:
     net = _cidr(cidr)
     with tx() as conn:
         _pool(conn, key, lock=True)
+        pool = _pool(conn, key, lock=True)
         if conn.execute("DELETE FROM pool_exclusion WHERE pool_key = %s AND cidr = %s RETURNING 1", (key, str(net))).fetchone() is None:
             raise IpamError("IPAM-NOT-FOUND", f"{net} isn't an exclusion of {key}", status=404)
+        # If a sibling pool was given this space, un-excluding it would let both pools hand it out.
+        if pool["parent_key"]:
+            for r in conn.execute("SELECT cidr FROM pool_prefix WHERE pool_key = %s", (key,)).fetchall():
+                clash = _sibling_clash(conn, pool["parent_key"], key, ip_network(r["cidr"]))
+                if clash:
+                    sibling, prefix, gap = clash
+                    raise IpamError(
+                        "IPAM-EXCLUSION-IN-USE",
+                        f"{net} is excluded because sibling pool {sibling} uses {prefix}. Remove that prefix from {sibling} first.",
+                        status=409, sibling=sibling, prefix=str(prefix),
+                    )
         view = _pool_view(conn, key)
     request.state.audit["changes"] = {"removed": str(net)}
     return view

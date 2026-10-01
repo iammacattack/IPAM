@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from ipaddress import ip_network
 
 import psycopg
 import pytest
@@ -175,6 +176,39 @@ def test_vrf_and_pool_lifecycle(admin, tag):
 def test_keys_cannot_change_pools(api):
     r = api.post("/vrfs", json={"vrfKey": "LT-NOPE"})
     assert r.status_code == 403 and r.json()["code"] == "IPAM-PERMISSION-DENIED"
+
+
+def test_space_carved_out_of_one_pool_can_go_to_a_sibling(admin, tag):
+    """The reported case: exclude 10.61.0.0/16 from SITE-POOL-AU, then give it to a new sibling pool."""
+    api = admin
+    edge = f"LT-{tag}-EDGE"
+    carve = "10.199.0.0/16"  # test-only range; never touch real exclusions
+    site_pool = next(p for p in api.get("/pools").json() if p["poolKey"] == "SITE-POOL-AU")
+    if any(ip_network(x).overlaps(ip_network("10.198.0.0/15")) for x in site_pool["exclusions"]) or any(
+        ip_network(s["blocks"][0]["cidr"]).overlaps(ip_network("10.198.0.0/15")) for s in api.get("/sites").json() if s["blocks"]
+    ):
+        pytest.skip("10.198.0.0/15 is in real use here; not touching it")
+    # without the exclusion, the overlap is refused and the message says what to do
+    r = api.post("/pools", json={"poolKey": edge, "parentPool": "ENTERPRISE", "vrf": "NXT", "allocationPrefixLength": 19, "prefixes": [carve]})
+    assert r.status_code == 409 and r.json()["code"] == "IPAM-POOL-OVERLAP" and r.json()["notExcluded"] == carve
+
+    api.post("/pools/SITE-POOL-AU/exclusions", json={"cidr": carve}).raise_for_status()
+    try:
+        r = api.post("/pools", json={"poolKey": edge, "parentPool": "ENTERPRISE", "vrf": "NXT", "allocationPrefixLength": 19, "prefixes": [carve]})
+        assert r.status_code == 201, r.text
+        # partly excluded isn't enough
+        r = api.post(f"/pools/{edge}/prefixes", json={"cidr": "10.198.0.0/15"})
+        assert r.status_code == 409 and r.json()["notExcluded"] == "10.198.0.0/16"
+        # the exclusion can't be lifted while the sibling uses the space
+        r = api.delete("/pools/SITE-POOL-AU/exclusions", params={"cidr": carve})
+        assert r.status_code == 409 and r.json()["code"] == "IPAM-EXCLUSION-IN-USE"
+        # the new pool allocates from its own space
+        nxt = api.get(f"/pools/{edge}/next-free").json()
+        assert nxt["cidr"] == "10.199.0.0/19"
+    finally:
+        api.delete(f"/pools/{edge}")
+        api.delete("/pools/SITE-POOL-AU/exclusions", params={"cidr": carve})
+    assert carve not in next(p for p in api.get("/pools").json() if p["poolKey"] == "SITE-POOL-AU")["exclusions"]
 
 
 def test_pool_with_allocations_is_protected(admin):
